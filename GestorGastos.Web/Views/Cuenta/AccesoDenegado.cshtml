@@ -1,0 +1,24 @@
+@{
+    ViewData["Title"] = "Acceso denegado";
+}
+
+<div class="row justify-content-center py-md-5">
+    <div class="col-md-8 col-lg-6">
+        <div class="card border-danger-subtle">
+            <div class="card-body p-4">
+                <p class="badge text-bg-danger mb-3">403</p>
+                <h1 class="h4">No tenés acceso a esta pantalla</h1>
+                <p class="text-body-secondary">Tu usuario no tiene el rol necesario. Si creés que es un error, pedile a un administrador del tenant que te asigne el rol correspondiente.</p>
+                <div class="d-flex flex-wrap gap-2">
+                    <a class="btn btn-primary" asp-controller="Home" asp-action="Index">Ir al dashboard</a>
+                    @if (User.Identity?.IsAuthenticated == true)
+                    {
+                        <form asp-controller="Cuenta" asp-action="CerrarSesion" method="post">
+                            <button type="submit" class="btn btn-outline-secondary">Cerrar sesión</button>
+                        </form>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

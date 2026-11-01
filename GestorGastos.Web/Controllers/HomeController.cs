@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using GestorGastos.Web.Helpers;
 using GestorGastos.Web.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -7,10 +8,15 @@ namespace GestorGastos.Web.Controllers
 {
     public class HomeController : Controller
     {
-        // TODO Autenticación: sin sesión devolver la vista Bienvenida (P1) y con sesión el Dashboard (P2).
         [AllowAnonymous]
         public IActionResult Index()
         {
+            if (User.Identity?.IsAuthenticated != true)
+                return View("Bienvenida");
+
+            if (!User.TieneRol())
+                return Forbid();
+
             return View();
         }
 

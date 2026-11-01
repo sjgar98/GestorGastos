@@ -1,9 +1,13 @@
 using GestorGastos.Entidades;
+using GestorGastos.Repositorios;
+using GestorGastos.Repositorios.Interfaces;
+using GestorGastos.Servicios;
+using GestorGastos.Servicios.Interfaces;
+using GestorGastos.Web.Helpers;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Web;
-using Microsoft.Identity.Web.UI;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,18 +15,32 @@ builder.Services.AddDbContext<GestorGastosDbContext>(options =>
     options.UseSqlServer(ConexionBaseDatos.Obtener(builder.Configuration.GetConnectionString("GestorGastos")),
         sqlServer => sqlServer.EnableRetryOnFailure()));
 
+builder.Services.AddScoped<IUsuarioRepositorio, UsuarioRepositorio>();
+builder.Services.AddScoped<IUsuarioServicio, UsuarioServicio>();
+
 builder.Services.AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
-    .AddMicrosoftIdentityWebApp(builder.Configuration.GetSection("AzureAd"));
-// TODO Autenticación: OnTokenValidated → UsuarioServicio.RegistrarAccesoAsync y AccessDeniedPath → CuentaController.AccesoDenegado.
+    .AddMicrosoftIdentityWebApp(
+        options =>
+        {
+            builder.Configuration.Bind("AzureAd", options);
+            options.Events.OnTokenValidated = async contexto =>
+            {
+                var usuario = contexto.Principal!;
+                var usuarioServicio = contexto.HttpContext.RequestServices.GetRequiredService<IUsuarioServicio>();
+                await usuarioServicio.RegistrarAccesoAsync(usuario.GetObjectId()!, usuario.Nombre(), usuario.Email());
+            };
+        },
+        cookies => cookies.AccessDeniedPath = "/Cuenta/AccesoDenegado");
 
 builder.Services.AddAuthorization(options =>
 {
-    options.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
+    options.FallbackPolicy = new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .RequireRole(Roles.Empleado, Roles.Administrador)
+        .Build();
 });
 
-builder.Services.AddControllersWithViews()
-    .AddMicrosoftIdentityUI();
-builder.Services.AddRazorPages();
+builder.Services.AddControllersWithViews();
 builder.Services.AddProblemDetails();
 
 if (!string.IsNullOrEmpty(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
@@ -59,7 +77,5 @@ app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}")
     .WithStaticAssets();
-
-app.MapRazorPages();
 
 app.Run();

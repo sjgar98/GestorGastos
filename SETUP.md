@@ -44,10 +44,11 @@ dotnet user-secrets set "AzureAd:ClientSecret" "<Value del secreto>" --project G
   quedar vacío hasta que esté implementada la extracción.
 
 **Prueba:** `dotnet run --project GestorGastos.Web --launch-profile https` y abrir `https://localhost:7282`.
-- La página de inicio carga sin pedir login.
-- Cualquier otra ruta (por ejemplo `/Comprobantes`) redirige al login de Microsoft del tenant GestorGastos.
-  Después del login da 404 porque esa pantalla todavía no existe. Si se llega al login, Entra ID está bien
-  configurado.
+- `/` muestra la Bienvenida sin pedir login. **Iniciar sesión con Microsoft** lleva al login del tenant GestorGastos.
+- Después del login, con rol `Empleado` o `Administrador`, se ve "Hola, <nombre>" con la navbar (Administración solo
+  para el admin) y el usuario queda guardado en la tabla `Usuarios`. Sin rol, se ve Acceso denegado.
+- **Cerrar sesión** (menú con el nombre arriba a la derecha) vuelve a la Bienvenida.
+- Los links Mis comprobantes, Cargar y Administración dan 404 porque esas pantallas todavía no existen.
 
 ## 2. En Azure: App Service
 

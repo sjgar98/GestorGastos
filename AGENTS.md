@@ -10,6 +10,9 @@ Este archivo resume el enunciado, fija las decisiones de arquitectura y registra
 las secciones 0 "Decisiones del equipo", 5 "Estado por funcionalidad" y 6 "Mocks y pendientes"). Es la única fuente de contexto
 para agentes: `CLAUDE.md` solo lo importa (`@AGENTS.md`), así que los cambios se hacen acá.
 
+**Idioma**: el agente se comunica con el equipo **en español** (respuestas, preguntas, planes, resúmenes,
+mensajes de commit y descripciones de PR), además de escribir el código en español (sección 3).
+
 **Qué es fijo y qué no**: lo único impuesto por la cátedra son las **tecnologías y servicios de Azure**
 de la sección 1. El enunciado lo escribió el equipo: requisitos, modelo, reglas, pantallas y endpoints se
 pueden cambiar si hace falta, registrando la decisión en la sección 0 y actualizando este archivo.
@@ -44,6 +47,7 @@ al agregar una, reflejarla también en las secciones afectadas.
 |---|---|---|
 | Concurrencia entre administradores (RN-19) | Se asume que no hay concurrencia: sin validaciones adicionales ni control por `RowVersion` | `Comprobante` no tiene `RowVersion`; los POST de admin no envían versión; no se maneja `DbUpdateConcurrencyException` |
 | Tests unitarios | No se hacen | No hay proyecto de tests |
+| Login / logout | `CuentaController` propio: `IniciarSesion` (Challenge OIDC) y `CerrarSesion` (POST con antiforgery, vuelve a `/`). Sin `Microsoft.Identity.Web.UI` ni Razor Pages | P1 apunta a `Cuenta/IniciarSesion`, no a `MicrosoftIdentity/Account/SignIn` |
 | Migraciones en Azure | La web las aplica al arrancar en **todos** los entornos (EF Core toma un lock en la BD durante `Migrate`); la Function no migra | No se corre `dotnet ef database update` contra producción; el usuario de BD de la web necesita permisos DDL |
 
 ## 1. Stack y comandos
@@ -161,8 +165,13 @@ No hay proyecto de tests (ver 0).
   y delegan en `GestorGastos.Servicios`. Las transiciones se validan solo en `ComprobanteServicio`.
 - Controllers → Servicios → Repositorios. La web y la Function usan **los mismos** servicios (no duplicar reglas en la Function).
 - Permisos **solo** desde el token: `oid` (`User.GetObjectId()`) y App Roles. Nunca ids/roles enviados por el cliente.
-- `[Authorize]` global (fallback policy) salvo P1 y Acceso denegado; `[Authorize(Roles = "Administrador")]`
-  en el área Admin y en `/api/admin/...`. Ocultar botones **no** reemplaza la validación del backend.
+- `[Authorize]` global: la fallback policy exige sesión **y** rol `Empleado` o `Administrador` (sin rol → Forbid →
+  `AccessDeniedPath` = `/Cuenta/AccesoDenegado`). Excepciones: `HomeController.Index` (P1/P2, chequea el rol a mano con
+  `User.TieneRol()`), `Cuenta/IniciarSesion` y `Cuenta/AccesoDenegado` son `[AllowAnonymous]`; `Cuenta/CerrarSesion` es
+  `[Authorize]` (solo sesión, para que un usuario sin rol pueda salir). `[Authorize(Roles = Roles.Administrador)]`
+  (`Web/Helpers/Roles.cs`) en el área Admin y en `/api/admin/...`. Ocultar botones **no** reemplaza la validación del backend.
+- Datos del usuario logueado en vistas y en el alta: extensiones de `Web/Helpers/ClaimsPrincipalHelper.cs`
+  (`User.Nombre()`, `User.Email()`, `User.Rol()`, `User.TieneRol()`), importadas en `_ViewImports`.
 - Toda consulta de empleado filtra por `UsuarioId` del usuario logueado. Recurso ajeno → **404**.
 - Un administrador **no** cambia el estado de sus propios comprobantes (RN-15) → **403**, validado en el servicio.
 - Errores de API con `ProblemDetails` (RFC 9457) y mensaje en español. Códigos: 400 inválido, 401 sin sesión,
@@ -225,7 +234,8 @@ No hay proyecto de tests (ver 0).
 ## 4. Modelo de datos (`GestorGastos.Entidades`)
 
 **Usuario** — alta en el primer login y actualización (nombre, email, último acceso) en los siguientes
-(evento `OnTokenValidated` de OpenID Connect → `UsuarioServicio.RegistrarAccesoAsync`).
+(evento `OnTokenValidated` de OpenID Connect en `Web/Program.cs` → `UsuarioServicio.RegistrarAccesoAsync`, con `oid`,
+claim `name` y `preferred_username`).
 
 | Campo | Tipo | Reglas |
 |---|---|---|
@@ -283,14 +293,14 @@ Leyenda: ✅ hecho · 🟡 parcial/mock · ❌ no existe. Actualizar en cada PR.
 
 | # | Pantalla / recurso | MVC (acción) | API | Estado |
 |---|---|---|---|---|
-| — | Solución, proyectos y DI base | — | — | ✅ `GestorGastos.slnx` con los 6 proyectos; carpetas vacías (`Interfaces/`, `Controllers/Api/`, `Areas/Admin/`, `Helpers/`, `Validaciones/`) con `.gitkeep`; DbContext, ProblemDetails y App Insights registrados en web y Function; `.vscode` (build + launch Web) |
+| — | Solución, proyectos y DI base | — | — | ✅ `GestorGastos.slnx` con los 6 proyectos; carpetas vacías (`Controllers/Api/`, `Areas/Admin/`, `Validaciones/`) con `.gitkeep`; DbContext, ProblemDetails y App Insights registrados en web y Function; `.vscode` (build + launch Web) |
 | — | `compose.yaml` (SQL Server + Azurite), `.env.example`, `local.settings.example.json` | — | — | ✅ |
 | — | Modelo + migración inicial | — | — | ✅ `Usuario`, `Comprobante`, `HistorialEstado` + enums en DTOs; migración `Inicial` (la web aplica las migraciones al arrancar, en todos los entornos) |
-| — | Auth Entra ID (OIDC, App Roles, fallback policy) + alta/actualización de `Usuario` | — | — | 🟡 `AddMicrosoftIdentityWebApp` + `AddMicrosoftIdentityUI` + fallback policy cableados. Falta: `OnTokenValidated` (alta de Usuario), `AccessDeniedPath`, usuarios sin rol, App Registration |
-| — | Layout con navbar (Dashboard, Mis comprobantes, Cargar, Administración solo admin; usuario → rol, email, Cerrar sesión) | `_Layout.cshtml` | — | 🟡 Layout base en español con Bootstrap 5.3 + Bootstrap Icons (CDN) y navbar solo con la marca |
-| P1 | Bienvenida / Login (redirige a Dashboard si hay sesión) | `HomeController.Index` `[AllowAnonymous]` sin sesión → vista `Bienvenida` | — | ❌ (hoy `Index` es un placeholder anónimo) |
-| — | Acceso denegado (sin rol o Empleado en `/Admin`) | `CuentaController.AccesoDenegado` | — | ❌ |
-| P2 | Dashboard (abiertos + desglose + alerta de errores) | `HomeController.Index` con sesión (sin rol → Acceso denegado) | — | ❌ |
+| — | Auth Entra ID (OIDC, App Roles, fallback policy) + alta/actualización de `Usuario` | — | — | ✅ `AddMicrosoftIdentityWebApp` con `OnTokenValidated` → `UsuarioServicio.RegistrarAccesoAsync` (`UsuarioRepositorio`), `AccessDeniedPath`, fallback policy con rol; login/logout en `CuentaController` |
+| — | Layout con navbar (Dashboard, Mis comprobantes, Cargar, Administración solo admin; usuario → rol, email, Cerrar sesión) | `_Layout.cshtml` | — | ✅ Navbar completa según rol (solo con sesión) + `@Html.AntiForgeryToken()` para los `fetch`. Los links a Mis comprobantes, Cargar y Administración dan 404 hasta que existan esas pantallas (hrefs fijos; pasarlos a `asp-*` al crearlas) |
+| P1 | Bienvenida / Login (redirige a Dashboard si hay sesión) | `HomeController.Index` `[AllowAnonymous]` sin sesión → vista `Bienvenida` | — | ✅ Botón → `Cuenta/IniciarSesion` |
+| — | Acceso denegado (sin rol o Empleado en `/Admin`) | `CuentaController.AccesoDenegado` | — | ✅ Responde 403; Cerrar sesión solo si hay sesión |
+| P2 | Dashboard (abiertos + desglose + alerta de errores) | `HomeController.Index` con sesión (sin rol → Acceso denegado) | — | 🟡 Placeholder: solo "Hola, <nombre>" y un aviso de que no está disponible |
 | P3 | Mis comprobantes (filtro estado, orden, paginación 10, eliminar con modal, polling de Procesando) | `ComprobantesController.Index` | `GET api/comprobantes/{id}/estado`, `DELETE api/comprobantes/{id}` | ❌ |
 | P4 | Cargar — etapa 1 (archivo, tipo, categoría, miniatura, Quitar) | `ComprobantesController.Cargar` GET/POST | — | ❌ |
 | P4 | Cargar — etapa 2 (polling 3 s / 2 min, resultado, edición, Revisar < 0,8) | `ComprobantesController.Resultado/{id}` + `Editar [POST]` | `GET api/comprobantes/{id}/estado` | ❌ |
@@ -327,9 +337,9 @@ Pendientes / mocks activos (agregar una fila por cada mock o integración a medi
 
 | Qué | Dónde | TODO |
 |---|---|---|
-| Alta/actualización de `Usuario` y Acceso denegado | `Web/Program.cs` | `TODO Autenticación` |
-| Bienvenida (P1) / Dashboard (P2) en `HomeController.Index` (hoy placeholder) | `Web/Controllers/HomeController.cs` | `TODO Autenticación` |
-| Navbar completa según rol | `Web/Views/Shared/_Layout.cshtml` | `TODO Autenticación` |
+| Dashboard (P2) placeholder (sin contadores ni alerta de errores) | `Web/Views/Home/Index.cshtml` | — |
+| Links de la navbar a pantallas que no existen todavía (hrefs fijos) | `Web/Views/Shared/_Layout.cshtml` | — |
+| `/api`: sin sesión o sin rol hoy redirige (a Entra ID / Acceso denegado); debería responder 401/403 `ProblemDetails`. Resolver con los eventos `OnRedirectToIdentityProvider` (OIDC) y `OnRedirectToAccessDenied` (cookie) al crear el primer controller API | `Web/Program.cs` | — |
 | `ExtraerComprobanteFunction` y registro de servicios compartidos | `Functions/Program.cs` | `TODO Extracción` |
 
 ## 7. Requisitos funcionales (resumen del enunciado)
@@ -448,7 +458,7 @@ P1 y P2 son la misma acción (`HomeController.Index`, que también responde en `
 `Bienvenida`; con sesión, el Dashboard. Así no hay dos acciones compitiendo por `/` con la ruta convencional.
 
 - **P1**: card centrada sin layout autenticado: "UNLaM · Programación Web 3", título "Reembolsos", texto
-  breve, `btn btn-primary btn-lg w-100` **Iniciar sesión con Microsoft** → `MicrosoftIdentity/Account/SignIn`;
+  breve, `btn btn-primary btn-lg w-100` **Iniciar sesión con Microsoft** → `Cuenta/IniciarSesion`;
   "Usá una cuenta del tenant de Entra ID del equipo." Con sesión, `/` redirige al Dashboard.
 - **Acceso denegado**: card `border-danger-subtle`, badge "403", "No tenés acceso a esta pantalla",
   botones Ir al dashboard / Cerrar sesión. Para usuarios sin rol y Empleados en `/Admin/...`.
@@ -576,8 +586,8 @@ Los usuarios reales vienen de Entra ID; estos sirven para crear las cuentas de p
 
 ## 9. Gotchas
 
-- **No usar Razor Pages** (ni `AddRazorPages` para pantallas propias); `Microsoft.Identity.Web.UI` las usa
-  internamente para SignIn/SignOut y eso está bien.
+- **No usar Razor Pages** (ni `AddRazorPages`): login y logout los resuelve `CuentaController` (ver 0), por eso no se
+  usa `Microsoft.Identity.Web.UI`.
 - El Blob Trigger clásico puede demorar minutos: en Azure usar origen **Event Grid** (criterio "< 1 minuto").
   En local, Azurite no emite eventos de Event Grid: usar el trigger clásico solo en local.
 - Document Intelligence F0: máximo 4 MB y solo las 2 primeras páginas de un PDF.
@@ -589,7 +599,9 @@ Los usuarios reales vienen de Entra ID; estos sirven para crear las cuentas de p
 - La Function puede ejecutarse más de una vez para el mismo blob: chequear estado Procesando antes de procesar.
 - El timeout de 5 min lo aplica la **web** al consultar el estado, no un job: comparar `FechaCarga` (UTC) con `DateTime.UtcNow`.
 - 404 vs 403: empleado sobre ajeno → 404; Empleado en `/api/admin` → 403; admin sobre su propio comprobante → 403.
-  Usuario autenticado sin rol → redirigir a Acceso denegado (configurar `AccessDeniedPath`), no una 403 en blanco.
+  Usuario autenticado sin rol → redirigir a Acceso denegado (`AccessDeniedPath` de la cookie), no una 403 en blanco.
+- Una acción `[AllowAnonymous]` saltea la fallback policy también para el rol: si muestra algo a usuarios logueados
+  (como `HomeController.Index`), chequear `User.TieneRol()` y devolver `Forbid()`.
 - Los roles llegan en el claim `roles`; con `Microsoft.Identity.Web` funcionan con `[Authorize(Roles = ...)]` y `User.IsInRole`.
 - Fechas: guardar UTC y convertir solo al mostrar; el `input type=date` del pago/fecha del comprobante es fecha local de Argentina.
   "No futura" se compara contra la fecha de hoy en Argentina, no contra UTC (entre 21:00 y 24:00 difieren).

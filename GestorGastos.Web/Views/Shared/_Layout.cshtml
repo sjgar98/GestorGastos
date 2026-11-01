@@ -10,16 +10,52 @@
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
 <body class="bg-body-tertiary">
-    @* TODO Autenticación: navbar completa (secciones según rol, menú de usuario con Cerrar sesión). *@
-    <nav class="navbar navbar-expand-md bg-body border-bottom mb-4">
-        <div class="container">
-            <a class="navbar-brand fw-semibold" asp-area="" asp-controller="Home" asp-action="Index">
-                <i class="bi bi-receipt"></i> Reembolsos
-            </a>
-        </div>
-    </nav>
+    @Html.AntiForgeryToken()
+    @if (User.Identity?.IsAuthenticated == true)
+    {
+        var controladorActual = ViewContext.RouteData.Values["controller"]?.ToString();
+        <nav class="navbar navbar-expand-md bg-body border-bottom">
+            <div class="container">
+                <a class="navbar-brand fw-semibold" asp-area="" asp-controller="Home" asp-action="Index">Reembolsos</a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navPrincipal" aria-controls="navPrincipal" aria-expanded="false" aria-label="Abrir menú">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navPrincipal">
+                    <ul class="navbar-nav me-auto mb-2 mb-md-0">
+                        @if (User.TieneRol())
+                        {
+                            <li class="nav-item">
+                                <a class="nav-link @(controladorActual == "Home" ? "active" : "")" asp-area="" asp-controller="Home" asp-action="Index">Dashboard</a>
+                            </li>
+                            <li class="nav-item"><a class="nav-link" href="/Comprobantes">Mis comprobantes</a></li>
+                            <li class="nav-item"><a class="nav-link" href="/Comprobantes/Cargar">Cargar</a></li>
+                            @if (User.IsInRole(Roles.Administrador))
+                            {
+                                <li class="nav-item"><a class="nav-link" href="/Admin/Comprobantes">Administración</a></li>
+                            }
+                        }
+                    </ul>
+                    <div class="dropdown">
+                        <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            @User.Nombre()
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><h6 class="dropdown-header">@User.Rol()</h6></li>
+                            <li><span class="dropdown-item-text small text-body-secondary">@User.Email()</span></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <form asp-area="" asp-controller="Cuenta" asp-action="CerrarSesion" method="post">
+                                    <button type="submit" class="dropdown-item">Cerrar sesión</button>
+                                </form>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </nav>
+    }
     <div class="container">
-        <main role="main" class="pb-4">
+        <main role="main" class="py-4">
             @RenderBody()
         </main>
     </div>
