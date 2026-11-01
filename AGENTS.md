@@ -44,6 +44,7 @@ al agregar una, reflejarla también en las secciones afectadas.
 |---|---|---|
 | Concurrencia entre administradores (RN-19) | Se asume que no hay concurrencia: sin validaciones adicionales ni control por `RowVersion` | `Comprobante` no tiene `RowVersion`; los POST de admin no envían versión; no se maneja `DbUpdateConcurrencyException` |
 | Tests unitarios | No se hacen | No hay proyecto de tests |
+| Migraciones en Azure | La web las aplica al arrancar en **todos** los entornos (EF Core toma un lock en la BD durante `Migrate`); la Function no migra | No se corre `dotnet ef database update` contra producción; el usuario de BD de la web necesita permisos DDL |
 
 ## 1. Stack y comandos
 
@@ -70,7 +71,7 @@ Comandos:
 dotnet build GestorGastos.slnx
 docker compose --env-file .env up -d               # compose.yaml: SQL Server + Azurite (copiar .env.example a .env)
 set -a && source .env && set +a                    # Linux/macOS: exportar GESTORGASTOS_DB_* en la terminal (VS Code lo hace con envFile)
-dotnet run --project GestorGastos.Web              # aplica migraciones al arrancar en Development
+dotnet run --project GestorGastos.Web              # aplica migraciones pendientes al arrancar (también en Azure)
 cd GestorGastos.Functions && func start            # requiere Azure Functions Core Tools v4 y local.settings.json (copiar de local.settings.example.json)
 # Migraciones: DbContext en Entidades, configuración en Web
 dotnet ef migrations add <NombreEnPascal> --project GestorGastos.Entidades --startup-project GestorGastos.Web
@@ -91,6 +92,10 @@ dotnet user-secrets set "AzureAd:ClientSecret" "<valor>" --project GestorGastos.
 - `GestorGastosDbContext` recibe las opciones por constructor (no tiene `OnConfiguring`): la connection string
   la registran `Web/Program.cs` y `Functions/Program.cs` con `AddDbContext`. Por eso las migraciones usan
   `--startup-project GestorGastos.Web` (`migrations add` no se conecta).
+- Migraciones: `Web/Program.cs` corre `MigrateAsync()` al arrancar en todos los entornos (ver 0), así que en Azure
+  se aplican solas al desplegar. El usuario de la connection string de la web necesita permisos DDL (`db_owner`).
+- `UseSqlServer` con `EnableRetryOnFailure()` (web y Function): la Azure SQL gratuita se auto-pausa y la primera
+  conexión después de la pausa puede fallar o tardar ~1 min.
 - `System.Security.Cryptography.Pkcs` está fijado en `Entidades` para pisar una versión transitiva vulnerable (NU1903).
 - Application Insights se registra solo si `APPLICATIONINSIGHTS_CONNECTION_STRING` no está vacío (web y Function).
 
@@ -280,7 +285,7 @@ Leyenda: ✅ hecho · 🟡 parcial/mock · ❌ no existe. Actualizar en cada PR.
 |---|---|---|---|---|
 | — | Solución, proyectos y DI base | — | — | ✅ `GestorGastos.slnx` con los 6 proyectos; carpetas vacías (`Interfaces/`, `Controllers/Api/`, `Areas/Admin/`, `Helpers/`, `Validaciones/`) con `.gitkeep`; DbContext, ProblemDetails y App Insights registrados en web y Function; `.vscode` (build + launch Web) |
 | — | `compose.yaml` (SQL Server + Azurite), `.env.example`, `local.settings.example.json` | — | — | ✅ |
-| — | Modelo + migración inicial | — | — | ✅ `Usuario`, `Comprobante`, `HistorialEstado` + enums en DTOs; migración `Inicial` (en Development la web la aplica al arrancar) |
+| — | Modelo + migración inicial | — | — | ✅ `Usuario`, `Comprobante`, `HistorialEstado` + enums en DTOs; migración `Inicial` (la web aplica las migraciones al arrancar, en todos los entornos) |
 | — | Auth Entra ID (OIDC, App Roles, fallback policy) + alta/actualización de `Usuario` | — | — | 🟡 `AddMicrosoftIdentityWebApp` + `AddMicrosoftIdentityUI` + fallback policy cableados. Falta: `OnTokenValidated` (alta de Usuario), `AccessDeniedPath`, usuarios sin rol, App Registration |
 | — | Layout con navbar (Dashboard, Mis comprobantes, Cargar, Administración solo admin; usuario → rol, email, Cerrar sesión) | `_Layout.cshtml` | — | 🟡 Layout base en español con Bootstrap 5.3 + Bootstrap Icons (CDN) y navbar solo con la marca |
 | P1 | Bienvenida / Login (redirige a Dashboard si hay sesión) | `HomeController.Index` `[AllowAnonymous]` sin sesión → vista `Bienvenida` | — | ❌ (hoy `Index` es un placeholder anónimo) |
@@ -592,3 +597,7 @@ Los usuarios reales vienen de Entra ID; estos sirven para crear las cuentas de p
   `IsConcurrencyToken`, ni manejar `DbUpdateConcurrencyException`.
 - `HasConversion<string>()` en **todos** los enums, incluido `HistorialEstado.EstadoAnterior` (nullable).
 - `local.settings.json`, `.env`, `appsettings.*.local.json` y User Secrets nunca en el repo.
+- Las migraciones se aplican solas al arrancar la web (ver 0): una migración nueva corre en producción en el próximo
+  despliegue. Evitar cambios destructivos (renombrar/borrar columnas con datos) sin migrar los datos en la misma migración.
+- Con `EnableRetryOnFailure`, una transacción explícita (`BeginTransactionAsync`) tiene que ir dentro de
+  `db.Database.CreateExecutionStrategy().ExecuteAsync(...)`; si no, EF lanza `InvalidOperationException`.
