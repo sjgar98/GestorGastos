@@ -23,7 +23,7 @@ Desde la carpeta del repo:
 
 ```bash
 cp .env.example .env        # poner una contraseña fuerte en GESTORGASTOS_DB_PASSWORD
-docker compose --env-file .env up -d   # en Windows con LocalDB alcanza con: docker compose up -d azurite
+docker compose --env-file .env up -d   # en Windows con LocalDB: solo Azurite (docker compose up -d azurite o por npm, ver abajo)
 
 dotnet user-secrets set "AzureAd:TenantId" "<Tenant ID de GestorGastos>" --project GestorGastos.Web
 dotnet user-secrets set "AzureAd:ClientId" "<Application (client) ID>" --project GestorGastos.Web
@@ -37,6 +37,22 @@ dotnet user-secrets set "AzureAd:ClientSecret" "<Value del secreto>" --project G
   No hace falta la connection string en User Secrets; si alguien ya la había guardado, borrarla con
   `dotnet user-secrets remove "ConnectionStrings:GestorGastos" --project GestorGastos.Web` (gana sobre lo anterior).
   El Storage local es Azurite y ya está configurado en `appsettings.Development.json`.
+- Windows sin Docker: LocalDB para la base y Azurite instalado por npm (requiere [Node.js](https://nodejs.org) LTS).
+  Instalarlo una vez:
+
+  ```powershell
+  npm install -g azurite
+  ```
+
+  Y levantarlo en una terminal aparte, que queda abierta mientras se trabaja (Ctrl+C lo detiene):
+
+  ```powershell
+  azurite --skipApiVersionCheck --location "$env:USERPROFILE\.azurite"
+  ```
+
+  `--skipApiVersionCheck` evita errores de versión con el SDK de Storage (el `compose.yaml` usa el mismo flag) y
+  `--location` guarda los datos fuera del repo. Tiene que estar corriendo antes de `dotnet run` y de `func start`, y
+  no puede convivir con el Azurite de Docker (usan los mismos puertos 10000–10002). Para actualizarlo: `npm update -g azurite`.
 - Opcional, para ver las trazas locales en Azure:
   `dotnet user-secrets set "APPLICATIONINSIGHTS_CONNECTION_STRING" "<cadena>" --project GestorGastos.Web`
 - Function: `cp GestorGastos.Functions/local.settings.example.json GestorGastos.Functions/local.settings.json`

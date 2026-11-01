@@ -74,6 +74,7 @@ Comandos:
 ```bash
 dotnet build GestorGastos.slnx
 docker compose --env-file .env up -d               # compose.yaml: SQL Server + Azurite (copiar .env.example a .env)
+azurite --skipApiVersionCheck --location "$env:USERPROFILE\.azurite"   # Windows sin Docker: Azurite por npm (npm install -g azurite) + LocalDB
 set -a && source .env && set +a                    # Linux/macOS: exportar GESTORGASTOS_DB_* en la terminal (VS Code lo hace con envFile)
 dotnet run --project GestorGastos.Web              # aplica migraciones pendientes al arrancar (también en Azure)
 cd GestorGastos.Functions && func start            # requiere Azure Functions Core Tools v4 y local.settings.json (copiar de local.settings.example.json)
