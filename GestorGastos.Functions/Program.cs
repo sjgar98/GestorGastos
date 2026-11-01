@@ -9,7 +9,7 @@ using Microsoft.Extensions.Hosting;
 var builder = FunctionsApplication.CreateBuilder(args);
 
 builder.Services.AddDbContext<GestorGastosDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("GestorGastos")));
+    options.UseSqlServer(ConexionBaseDatos.Obtener(builder.Configuration.GetConnectionString("GestorGastos"))));
 
 if (!string.IsNullOrEmpty(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
 {

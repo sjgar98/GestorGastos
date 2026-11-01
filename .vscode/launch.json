@@ -10,6 +10,10 @@
       "cwd": "${workspaceFolder}/GestorGastos.Web",
       "launchSettingsProfile": "https",
       "console": "internalConsole",
+      // LocalDB no existe en Linux: las variables GESTORGASTOS_DB_* se toman de .env (ver .env.example). Solo aplica en Linux.
+      "linux": {
+        "envFile": "${workspaceFolder}/.env"
+      },
       "serverReadyAction": {
         "action": "openExternally",
         "pattern": "\\bNow listening on:\\s+(https?://\\S+)"

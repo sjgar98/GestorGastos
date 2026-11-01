@@ -8,7 +8,7 @@ using Microsoft.Identity.Web.UI;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDbContext<GestorGastosDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("GestorGastos")));
+    options.UseSqlServer(ConexionBaseDatos.Obtener(builder.Configuration.GetConnectionString("GestorGastos"))));
 
 builder.Services.AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
     .AddMicrosoftIdentityWebApp(builder.Configuration.GetSection("AzureAd"));

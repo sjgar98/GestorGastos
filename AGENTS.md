@@ -55,7 +55,7 @@ Stack **obligatorio**, fijado por la cátedra (cualquier reemplazo de tecnologí
 | Web | ASP.NET Core MVC + Razor Views | Controllers + Views. **No Razor Pages** |
 | API | Controllers de Web API en el **mismo proyecto** web | Rutas bajo `/api`, JSON, `ProblemDetails` |
 | Datos | EF Core Code First + SQL Server | Migraciones versionadas en el repo |
-| BD | Azure SQL Database (oferta gratuita) | Local: SQL Server en Docker |
+| BD | Azure SQL Database (oferta gratuita) | Local: LocalDB (Windows) o SQL Server en Docker (Linux/macOS) |
 | Auth | Microsoft Entra ID, `Microsoft.Identity.Web` | App Registration single-tenant + App Roles |
 | Archivos | Azure Blob Storage | Contenedor **privado** `comprobantes`. Local: Azurite |
 | Procesamiento | Azure Functions, isolated worker | Blob Trigger (origen Event Grid en Azure) |
@@ -69,6 +69,7 @@ Comandos:
 ```bash
 dotnet build GestorGastos.slnx
 docker compose --env-file .env up -d               # compose.yaml: SQL Server + Azurite (copiar .env.example a .env)
+set -a && source .env && set +a                    # Linux/macOS: exportar GESTORGASTOS_DB_* en la terminal (VS Code lo hace con envFile)
 dotnet run --project GestorGastos.Web              # aplica migraciones al arrancar en Development
 cd GestorGastos.Functions && func start            # requiere Azure Functions Core Tools v4 y local.settings.json (copiar de local.settings.example.json)
 # Migraciones: DbContext en Entidades, configuración en Web
@@ -76,15 +77,20 @@ dotnet ef migrations add <NombreEnPascal> --project GestorGastos.Entidades --sta
 dotnet ef database update --project GestorGastos.Entidades --startup-project GestorGastos.Web
 # Secretos locales (nunca en appsettings versionado)
 dotnet user-secrets set "AzureAd:ClientSecret" "<valor>" --project GestorGastos.Web
-dotnet user-secrets set "ConnectionStrings:GestorGastos" "Server=localhost,1433;Database=GestorGastos;User Id=sa;Password=<password>;TrustServerCertificate=True" --project GestorGastos.Web
 ```
 
-- `.env` (copiado de `.env.example`): la contraseña de `sa` tiene que cumplir la política de SQL Server
-  (8+ caracteres con mayúsculas, minúsculas y números o símbolos) y es la misma que va en la connection string
-  de los User Secrets de la web y de `local.settings.json` de la Function.
+- Conexión a BD (`Entidades/ConexionBaseDatos.Obtener`, la usan `Web/Program.cs` y `Functions/Program.cs`):
+  si `ConnectionStrings:GestorGastos` tiene valor (Azure) se usa esa; si está vacía (local), sin `GESTORGASTOS_DB_HOST`
+  usa LocalDB `(localdb)\MSSQLLocalDB/GestorGastos` (Windows) y con ella arma la cadena con
+  `GESTORGASTOS_DB_HOST/PORT/NAME/USER/PASSWORD` (Docker, Linux/macOS). Fuera de Windows y sin ninguna de las dos falla al arrancar.
+  En local **no** se guarda la connection string en User Secrets ni en `local.settings.json` (si estuviera, gana sobre lo anterior).
+- `.env` (copiado de `.env.example`, solo Linux/macOS): lo usan `docker compose` y la web/Function para conectarse.
+  La contraseña de `sa` tiene que cumplir la política de SQL Server (8+ caracteres con mayúsculas, minúsculas y
+  números o símbolos). En la terminal hay que exportarlo (`set -a && source .env && set +a`) antes de `dotnet run`,
+  `dotnet ef` o `func start`; el launch de VS Code lo carga solo (`envFile`, solo en Linux).
 - `GestorGastosDbContext` recibe las opciones por constructor (no tiene `OnConfiguring`): la connection string
   la registran `Web/Program.cs` y `Functions/Program.cs` con `AddDbContext`. Por eso las migraciones usan
-  `--startup-project GestorGastos.Web` y necesitan `ConnectionStrings:GestorGastos` configurada (`migrations add` no se conecta).
+  `--startup-project GestorGastos.Web` (`migrations add` no se conecta).
 - `System.Security.Cryptography.Pkcs` está fijado en `Entidades` para pisar una versión transitiva vulnerable (NU1903).
 - Application Insights se registra solo si `APPLICATIONINSIGHTS_CONNECTION_STRING` no está vacío (web y Function).
 
@@ -92,7 +98,7 @@ dotnet user-secrets set "ConnectionStrings:GestorGastos" "Server=localhost,1433;
 
 | Clave | Web | Function | Notas |
 |---|---|---|---|
-| `ConnectionStrings:GestorGastos` | ✔ | ✔ | Local: SQL Server de Docker |
+| `ConnectionStrings:GestorGastos` | ✔ | ✔ | Solo Azure. Local: vacía → LocalDB o `GESTORGASTOS_DB_*` (ver arriba) |
 | `AzureAd:Instance`, `TenantId`, `ClientId`, `ClientSecret`, `CallbackPath` | ✔ | — | `CallbackPath` = `/signin-oidc` |
 | `Storage:ConnectionString`, `Storage:Contenedor` (= `comprobantes`) | ✔ | ✔ (`AzureWebJobsStorage` + conexión del trigger) | Local: `UseDevelopmentStorage=true` (Azurite) |
 | `DocumentIntelligence:Endpoint`, `DocumentIntelligence:Key` | — | ✔ | Vacíos → extractor mock (ver 6) |
@@ -308,7 +314,7 @@ elige por configuración en `Program.cs` (web y Function), nunca con `if` en la 
 | Blob Storage | `IAlmacenamientoArchivos` (`SubirAsync`, `EliminarAsync` tolerando inexistente, `GenerarUrlLecturaAsync(blob, nombreDescarga?, 5 min)`) | Azurite (mismo SDK; SAS funciona con la cuenta de desarrollo) | Azure Storage (opcional Managed Identity + User Delegation SAS) | `Storage:ConnectionString` |
 | Document Intelligence | `IExtractorDocumentos` (`ExtraerAsync(stream, TipoDocumento)` → comercio, fecha, ítems, monto, moneda, confianzas) | `ExtractorDocumentosMock`: determinístico; si el nombre del blob/archivo original contiene `error` o `borroso` falla con "No se detectó el monto total del comprobante."; si no, devuelve datos de ejemplo con `ConfianzaDescripcion` < 0,8 | `ExtractorDocumentIntelligence` con `prebuilt-receipt` / `prebuilt-invoice` | `DocumentIntelligence:Endpoint` vacío → mock |
 | Disparo de la Function | Blob Trigger | Azurite + `func start` (trigger clásico, polling) | Blob Trigger `Source = EventGrid` + suscripción Event Grid | Configuración del trigger / App Settings |
-| Base de datos | `GestorGastosDbContext` | SQL Server en Docker | Azure SQL Database free | `ConnectionStrings:GestorGastos` |
+| Base de datos | `GestorGastosDbContext` | LocalDB (Windows) o SQL Server en Docker (`GESTORGASTOS_DB_HOST`) | Azure SQL Database free | `ConnectionStrings:GestorGastos` (vacía → local, `ConexionBaseDatos`) |
 | Autenticación | `Microsoft.Identity.Web` | **Real** (tenant del equipo), también en local | ídem | `AzureAd:*` |
 | Monitoreo | `ILogger` + App Insights | Consola | Application Insights | `APPLICATIONINSIGHTS_CONNECTION_STRING` |
 
