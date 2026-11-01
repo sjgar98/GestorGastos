@@ -64,19 +64,29 @@ Stack **obligatorio**, fijado por la cátedra (cualquier reemplazo de tecnologí
 | Hosting | Azure App Service F1 o B1 | + Function App |
 | UI | Bootstrap 5.3 (+ Bootstrap Icons) | CSS propio mínimo y justificado |
 
-Comandos (estructura objetivo; ajustar acá si cambia):
+Comandos:
 
 ```bash
 dotnet build GestorGastos.slnx
-docker compose --env-file .env up -d               # SQL Server + Azurite (copiar .env.example a .env)
+docker compose --env-file .env up -d               # compose.yaml: SQL Server + Azurite (copiar .env.example a .env)
 dotnet run --project GestorGastos.Web              # aplica migraciones al arrancar en Development
-cd GestorGastos.Functions && func start            # requiere Azure Functions Core Tools v4
+cd GestorGastos.Functions && func start            # requiere Azure Functions Core Tools v4 y local.settings.json (copiar de local.settings.example.json)
 # Migraciones: DbContext en Entidades, configuración en Web
 dotnet ef migrations add <NombreEnPascal> --project GestorGastos.Entidades --startup-project GestorGastos.Web
 dotnet ef database update --project GestorGastos.Entidades --startup-project GestorGastos.Web
 # Secretos locales (nunca en appsettings versionado)
 dotnet user-secrets set "AzureAd:ClientSecret" "<valor>" --project GestorGastos.Web
+dotnet user-secrets set "ConnectionStrings:GestorGastos" "Server=localhost,1433;Database=GestorGastos;User Id=sa;Password=<password>;TrustServerCertificate=True" --project GestorGastos.Web
 ```
+
+- `.env` (copiado de `.env.example`): la contraseña de `sa` tiene que cumplir la política de SQL Server
+  (8+ caracteres con mayúsculas, minúsculas y números o símbolos) y es la misma que va en la connection string
+  de los User Secrets de la web y de `local.settings.json` de la Function.
+- `GestorGastosDbContext` recibe las opciones por constructor (no tiene `OnConfiguring`): la connection string
+  la registran `Web/Program.cs` y `Functions/Program.cs` con `AddDbContext`. Por eso las migraciones usan
+  `--startup-project GestorGastos.Web` y necesitan `ConnectionStrings:GestorGastos` configurada (`migrations add` no se conecta).
+- `System.Security.Cryptography.Pkcs` está fijado en `Entidades` para pisar una versión transitiva vulnerable (NU1903).
+- Application Insights se registra solo si `APPLICATIONINSIGHTS_CONNECTION_STRING` no está vacío (web y Function).
 
 ### Configuración (solo nombres; los valores van en User Secrets / App Settings / Key Vault)
 
@@ -90,6 +100,8 @@ dotnet user-secrets set "AzureAd:ClientSecret" "<valor>" --project GestorGastos.
 
 - **Ningún secreto en el repositorio.** `local.settings.json` de la Function y `.env` no se versionan
   (sí `local.settings.example.json` y `.env.example` con claves vacías).
+- CI (`.github/workflows/ci.yml`, en push a `main` y en PRs a `main`): restore → build Release de `GestorGastos.slnx`
+  (`actions/checkout@v7`, `actions/setup-dotnet@v6`). No corre tests (ver 0) ni despliega.
 - Commits: Conventional Commits en español (`feat:`, `fix:`, `chore:`, `docs:`), ramas + PR a `main`.
 
 ## 2. Arquitectura
@@ -156,9 +168,17 @@ No hay proyecto de tests (ver 0).
   terminan en `Async` (`ListarPorUsuarioAsync`, `ObtenerPorIdAsync`, `AgregarAsync`, `GuardarCambiosAsync`).
 - Namespaces con llaves (no file-scoped), campos `_camelCase` inyectados por constructor,
   colecciones `new List<T>()`, strings `= string.Empty`, navegaciones `= null!`.
-- Comentarios breves y solo cuando explican un *por qué*. Pendientes: `// TODO <Área>: <qué falta>`
-  con áreas `Autenticación`, `Almacenamiento`, `Extracción`, `Monitoreo`, `Despliegue`.
-  Buscar con `grep -rn "TODO" --include=*.cs --include=*.cshtml --include=*.js`.
+- **Código autodocumentado**: los nombres de clases, métodos y variables tienen que explicar qué hace el
+  código. Comentarios **solo cuando sean estrictamente necesarios**, en dos casos:
+  1. El código es tan complejo, o depende de una restricción tan poco visible (p. ej. una limitación de
+     SQL Server o de un SDK), que no se entiende por sí solo.
+  2. Tareas pendientes: `// TODO <Área>: <qué falta>`, con áreas `Autenticación`, `Almacenamiento`,
+     `Extracción`, `Monitoreo`, `Despliegue`. Buscar con `grep -rn "TODO" --include=*.cs --include=*.cshtml --include=*.js`.
+
+  No agregar comentarios que repitan lo que el código ya dice ni que narren cada paso o sección
+  (`// Registrar servicios`, `// Login con Entra ID`), tampoco en vistas, csproj, YAML, `compose.yaml`
+  ni archivos de ejemplo. La documentación de uso y configuración va en este archivo o en el README.
+  Única excepción impuesta por el enunciado: cada regla de `site.css` lleva un comentario que la justifica.
 - Validaciones de entrada: Data Annotations en el DTO con `ErrorMessage` en español y voseo, usando
   los mensajes sugeridos del enunciado ("Seleccioná un archivo.", "El archivo supera los 4 MB.").
   Reglas que dependen de BD o del estado (dueño, transición) van en el servicio.
@@ -241,7 +261,10 @@ No hay proyecto de tests (ver 0).
 | Observacion | nvarchar(500) null | Motivo de rechazo, fecha de pago u otra nota |
 
 Índices: `(UsuarioId, Estado)` y `FechaCarga` en `Comprobante`.
-Migraciones: ninguna todavía. No editar migraciones ya mergeadas en `main`.
+`Usuario.Id` es nvarchar(36) (largo de un `oid`); `HistorialEstado.UsuarioId` es FK nullable a `Usuario` con
+`Restrict` (evita dos caminos de cascada). Enums como texto por convención en `ConfigureConventions`
+(nvarchar(30); `Moneda` char(3)), decimales (18,2).
+Migraciones: `<ts>_Inicial` (`20261101174953_Inicial`). No editar migraciones ya mergeadas en `main`.
 
 ## 5. Estado por funcionalidad
 
@@ -249,12 +272,12 @@ Leyenda: ✅ hecho · 🟡 parcial/mock · ❌ no existe. Actualizar en cada PR.
 
 | # | Pantalla / recurso | MVC (acción) | API | Estado |
 |---|---|---|---|---|
-| — | Solución, proyectos y DI base | — | — | ❌ |
-| — | `docker-compose.yml` (SQL Server + Azurite), `.env.example` | — | — | ❌ |
-| — | Modelo + migración inicial | — | — | ❌ |
-| — | Auth Entra ID (OIDC, App Roles, fallback policy) + alta/actualización de `Usuario` | — | — | ❌ |
-| — | Layout con navbar (Dashboard, Mis comprobantes, Cargar, Administración solo admin; usuario → rol, email, Cerrar sesión) | `_Layout.cshtml` | — | ❌ |
-| P1 | Bienvenida / Login (redirige a Dashboard si hay sesión) | `HomeController.Index` `[AllowAnonymous]` sin sesión → vista `Bienvenida` | — | ❌ |
+| — | Solución, proyectos y DI base | — | — | ✅ `GestorGastos.slnx` con los 6 proyectos; carpetas vacías (`Interfaces/`, `Controllers/Api/`, `Areas/Admin/`, `Helpers/`, `Validaciones/`) con `.gitkeep`; DbContext, ProblemDetails y App Insights registrados en web y Function; `.vscode` (build + launch Web) |
+| — | `compose.yaml` (SQL Server + Azurite), `.env.example`, `local.settings.example.json` | — | — | ✅ |
+| — | Modelo + migración inicial | — | — | ✅ `Usuario`, `Comprobante`, `HistorialEstado` + enums en DTOs; migración `Inicial` (en Development la web la aplica al arrancar) |
+| — | Auth Entra ID (OIDC, App Roles, fallback policy) + alta/actualización de `Usuario` | — | — | 🟡 `AddMicrosoftIdentityWebApp` + `AddMicrosoftIdentityUI` + fallback policy cableados. Falta: `OnTokenValidated` (alta de Usuario), `AccessDeniedPath`, usuarios sin rol, App Registration |
+| — | Layout con navbar (Dashboard, Mis comprobantes, Cargar, Administración solo admin; usuario → rol, email, Cerrar sesión) | `_Layout.cshtml` | — | 🟡 Layout base en español con Bootstrap 5.3 + Bootstrap Icons (CDN) y navbar solo con la marca |
+| P1 | Bienvenida / Login (redirige a Dashboard si hay sesión) | `HomeController.Index` `[AllowAnonymous]` sin sesión → vista `Bienvenida` | — | ❌ (hoy `Index` es un placeholder anónimo) |
 | — | Acceso denegado (sin rol o Empleado en `/Admin`) | `CuentaController.AccesoDenegado` | — | ❌ |
 | P2 | Dashboard (abiertos + desglose + alerta de errores) | `HomeController.Index` con sesión (sin rol → Acceso denegado) | — | ❌ |
 | P3 | Mis comprobantes (filtro estado, orden, paginación 10, eliminar con modal, polling de Procesando) | `ComprobantesController.Index` | `GET api/comprobantes/{id}/estado`, `DELETE api/comprobantes/{id}` | ❌ |
@@ -266,13 +289,13 @@ Leyenda: ✅ hecho · 🟡 parcial/mock · ❌ no existe. Actualizar en cada PR.
 | — | Timeout: Procesando > 5 min → ErrorExtraccion al consultar estado | — | dentro de `GET .../estado` | ❌ |
 | — | Validación de archivo (extensión, magic bytes, 4 MB, aviso PDF > 2 páginas) | — | — | ❌ |
 | — | Function de extracción (receipt/invoice, idempotente, historial) | — | — | ❌ |
-| — | Vista de error genérica (sin detalles técnicos) | `HomeController.Error` | `ProblemDetails` | ❌ |
+| — | Vista de error genérica (sin detalles técnicos) | `HomeController.Error` | `ProblemDetails` | 🟡 Vista `Error` genérica + `UseExceptionHandler` fuera de Development + `AddProblemDetails`; falta el helper que traduce `Resultado<T>` a `ProblemDetails` |
 | — | Application Insights + logs de 7.6 en web y Function | — | — | ❌ |
 | — | Despliegue (App Service, Function App, Azure SQL, Storage, Event Grid, DI F0) | — | — | ❌ |
 | — | README (diagrama, recursos, App Registration + App Roles, variables, correr local, desplegar) | — | — | ❌ |
 | — | 3 usuarios de prueba en el tenant (2 Empleado, 1 Administrador) | — | — | ❌ |
 | — | Captura de App Insights con una extracción completa | — | — | ❌ |
-| — | Opcional: CI/CD (GitHub Actions) web + Function | — | — | ❌ |
+| — | Opcional: CI/CD (GitHub Actions) web + Function | — | — | 🟡 CI ✅ (compila la solución en push y PR a `main`); falta el despliegue (CD) |
 | — | Opcional: Managed Identity en lugar de secretos | — | — | ❌ |
 
 ## 6. Mocks y pendientes de integración
@@ -293,7 +316,10 @@ Pendientes / mocks activos (agregar una fila por cada mock o integración a medi
 
 | Qué | Dónde | TODO |
 |---|---|---|
-| _(ninguno todavía)_ | | |
+| Alta/actualización de `Usuario` y Acceso denegado | `Web/Program.cs` | `TODO Autenticación` |
+| Bienvenida (P1) / Dashboard (P2) en `HomeController.Index` (hoy placeholder) | `Web/Controllers/HomeController.cs` | `TODO Autenticación` |
+| Navbar completa según rol | `Web/Views/Shared/_Layout.cshtml` | `TODO Autenticación` |
+| `ExtraerComprobanteFunction` y registro de servicios compartidos | `Functions/Program.cs` | `TODO Extracción` |
 
 ## 7. Requisitos funcionales (resumen del enunciado)
 

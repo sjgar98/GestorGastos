@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="GestorGastos.DTOs/GestorGastos.DTOs.csproj" />
+  <Project Path="GestorGastos.Entidades/GestorGastos.Entidades.csproj" />
+  <Project Path="GestorGastos.Functions/GestorGastos.Functions.csproj" />
+  <Project Path="GestorGastos.Repositorios/GestorGastos.Repositorios.csproj" />
+  <Project Path="GestorGastos.Servicios/GestorGastos.Servicios.csproj" />
+  <Project Path="GestorGastos.Web/GestorGastos.Web.csproj" />
+</Solution>
