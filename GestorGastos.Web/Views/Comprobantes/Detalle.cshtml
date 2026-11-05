@@ -1,14 +1,187 @@
-﻿@model GestorGastos.DTOs.ComprobanteDetalleDto
+﻿@using GestorGastos.DTOs.Enums
+@model GestorGastos.DTOs.ComprobanteDetalleDto
+@{
+    ViewData["Title"] = Model.NombreArchivoOriginal;
+    var puedeModificar = Model.Estado == EstadoComprobante.PendienteRevision
+        || Model.Estado == EstadoComprobante.ErrorExtraccion;
+}
 
-<h1>@Model.NombreArchivoOriginal</h1>
-<p>Estado: @Model.Estado</p>
-<p>Monto: @Model.Monto</p>
-<p>Comercio: @Model.Comercio</p>
+@functions {
+    static readonly System.Globalization.CultureInfo Cultura = new System.Globalization.CultureInfo("es-AR");
+    static readonly TimeZoneInfo ZonaArgentina = TimeZoneInfo.FindSystemTimeZoneById("America/Argentina/Buenos_Aires");
 
-<h2>Historial</h2>
-<ul>
-    @foreach (var cambio in Model.Historial)
+    static string TextoEstado(EstadoComprobante estado) => estado switch
     {
-        <li>@cambio.EstadoAnterior → @cambio.EstadoNuevo (@(cambio.NombreUsuario ?? "Procesamiento automático"))</li>
+        EstadoComprobante.Procesando => "Procesando",
+        EstadoComprobante.ErrorExtraccion => "Error de extracción",
+        EstadoComprobante.PendienteRevision => "Pendiente de Revisión",
+        EstadoComprobante.EnRevision => "En Revisión",
+        EstadoComprobante.Aprobado => "Aprobado",
+        EstadoComprobante.Rechazado => "Rechazado",
+        EstadoComprobante.Pagado => "Pagado",
+        _ => estado.ToString()
+    };
+
+    static string ClaseBadge(EstadoComprobante estado) => estado switch
+    {
+        EstadoComprobante.Procesando => "badge text-bg-secondary",
+        EstadoComprobante.ErrorExtraccion => "badge bg-danger-subtle text-danger-emphasis border border-danger-subtle",
+        EstadoComprobante.PendienteRevision => "badge text-bg-warning",
+        EstadoComprobante.EnRevision => "badge text-bg-info",
+        EstadoComprobante.Aprobado => "badge text-bg-primary",
+        EstadoComprobante.Rechazado => "badge text-bg-danger",
+        EstadoComprobante.Pagado => "badge text-bg-success",
+        _ => "badge text-bg-secondary"
+    };
+
+    static string TextoCategoria(Categoria categoria) => categoria == Categoria.Viaticos
+        ? "Viáticos"
+        : categoria.ToString();
+
+    static string FormatearMonto(decimal? monto, Moneda? moneda)
+    {
+        if (monto == null)
+        {
+            return "—";
+        }
+
+        var simbolo = moneda == null || moneda == Moneda.ARS ? "$" : moneda.ToString();
+        return $"{simbolo} {monto.Value.ToString("N2", Cultura)}";
     }
-</ul>
+
+    static string FormatearFechaHora(DateTime fechaUtc)
+    {
+        var utc = DateTime.SpecifyKind(fechaUtc, DateTimeKind.Utc);
+        return TimeZoneInfo.ConvertTimeFromUtc(utc, ZonaArgentina).ToString("dd/MM/yyyy HH:mm", Cultura);
+    }
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/Comprobantes">Mis comprobantes</a></li>
+        <li class="breadcrumb-item active" aria-current="page">@Model.NombreArchivoOriginal</li>
+    </ol>
+</nav>
+
+<h1 class="h2 mb-4">
+    @Model.NombreArchivoOriginal
+    <span class="@ClaseBadge(Model.Estado) fs-6 align-middle">@TextoEstado(Model.Estado)</span>
+</h1>
+
+<div class="row g-4">
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="fw-semibold">Vista previa</span>
+                <button type="button" id="boton-descargar" class="btn btn-sm btn-outline-secondary" disabled>Descargar</button>
+            </div>
+            <div id="vista-previa"
+                 class="vista-previa bg-body-secondary d-flex align-items-center justify-content-center text-muted"
+                 data-comprobante-id="@Model.Id"
+                 data-content-type="@Model.ContentType">
+                La vista previa todavía no está disponible.
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-5">
+        <div class="card mb-4">
+            <div class="card-header fw-semibold">Datos del comprobante</div>
+            <div class="card-body">
+                @if (Model.Estado == EstadoComprobante.Procesando)
+                {
+                    <div class="alert alert-secondary">Estamos analizando el comprobante. Los datos van a aparecer en unos instantes.</div>
+                }
+                @if (Model.Estado == EstadoComprobante.ErrorExtraccion)
+                {
+                    <div class="alert alert-warning">
+                        <strong>No pudimos leer el comprobante.</strong>
+                        @Model.MensajeError
+                        Completá descripción y monto para enviarlo a revisión.
+                    </div>
+                }
+                @if (Model.Estado == EstadoComprobante.Rechazado)
+                {
+                    <div class="alert alert-danger">
+                        <strong>Motivo del rechazo:</strong> @Model.MotivoRechazo
+                    </div>
+                }
+
+                <dl class="row mb-0">
+                    <dt class="col-sm-5 fw-normal text-muted">Archivo</dt>
+                    <dd class="col-sm-7">@Model.NombreArchivoOriginal</dd>
+
+                    <dt class="col-sm-5 fw-normal text-muted">Tipo</dt>
+                    <dd class="col-sm-7">@Model.TipoDocumento</dd>
+
+                    <dt class="col-sm-5 fw-normal text-muted">Categoría</dt>
+                    <dd class="col-sm-7">@TextoCategoria(Model.Categoria)</dd>
+
+                    <dt class="col-sm-5 fw-normal text-muted">Comercio</dt>
+                    <dd class="col-sm-7">@(string.IsNullOrWhiteSpace(Model.Comercio) ? "—" : Model.Comercio)</dd>
+
+                    <dt class="col-sm-5 fw-normal text-muted">Fecha del comprobante</dt>
+                    <dd class="col-sm-7">@(Model.FechaComprobante?.ToString("dd/MM/yyyy", System.Globalization.CultureInfo.InvariantCulture) ?? "—")</dd>
+
+                    <dt class="col-sm-5 fw-normal text-muted">Descripción</dt>
+                    <dd class="col-sm-7">@(string.IsNullOrWhiteSpace(Model.Descripcion) ? "—" : Model.Descripcion)</dd>
+
+                    <dt class="col-sm-5 fw-normal text-muted">Monto</dt>
+                    <dd class="col-sm-7 fw-bold">@FormatearMonto(Model.Monto, Model.Moneda)</dd>
+
+                    <dt class="col-sm-5 fw-normal text-muted">Fecha de carga</dt>
+                    <dd class="col-sm-7">@FormatearFechaHora(Model.FechaCarga)</dd>
+
+                    @if (Model.FechaPago != null)
+                    {
+                        <dt class="col-sm-5 fw-normal text-muted">Fecha de pago</dt>
+                        <dd class="col-sm-7">@FormatearFechaHora(Model.FechaPago.Value)</dd>
+                    }
+
+                    @if (Model.EditadoManualmente)
+                    {
+                        <dt class="col-sm-5 fw-normal text-muted">Edición</dt>
+                        <dd class="col-sm-7"><span class="badge text-bg-light border">Editados manualmente</span></dd>
+                    }
+                </dl>
+            </div>
+
+            @if (puedeModificar)
+            {
+                <div class="card-footer">
+                    <button type="button" id="boton-editar" class="btn btn-primary">Editar datos</button>
+                    <button type="button" id="boton-eliminar" class="btn btn-outline-danger">Eliminar</button>
+                </div>
+            }
+        </div>
+
+        <div class="card">
+            <div class="card-header fw-semibold">Historial</div>
+            <ul class="list-group list-group-flush">
+                @foreach (var cambio in Model.Historial)
+                {
+                    <li class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                @if (cambio.EstadoAnterior != null)
+                                {
+                                    <span class="@ClaseBadge(cambio.EstadoAnterior.Value)">@TextoEstado(cambio.EstadoAnterior.Value)</span>
+                                    <i class="bi bi-arrow-right mx-1"></i>
+                                }
+                                <span class="@ClaseBadge(cambio.EstadoNuevo)">@TextoEstado(cambio.EstadoNuevo)</span>
+                            </div>
+                            <small class="text-muted">@FormatearFechaHora(cambio.Fecha)</small>
+                        </div>
+                        <div class="small mt-1">
+                            @(cambio.NombreUsuario ?? "Procesamiento automático")
+                            @if (!string.IsNullOrWhiteSpace(cambio.Observacion))
+                            {
+                                <span class="text-muted">· @cambio.Observacion</span>
+                            }
+                        </div>
+                    </li>
+                }
+            </ul>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,4 @@
+/* Alto fijo para que la previsualización no cambie el tamaño de la página cuando carga el archivo. */
+.vista-previa {
+    height: 480px;
+}
