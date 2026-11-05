@@ -1,0 +1,259 @@
+@using GestorGastos.Web.Helpers
+@model GestorGastos.Web.Models.AdminDetalleViewModel
+
+@{
+    ViewData["Title"] = Model.Comprobante.NombreArchivoOriginal;
+    var c = Model.Comprobante;
+    var hoyArgentina = DateOnly.FromDateTime(DateTime.UtcNow.ConvertirAArgentina());
+    var fechaCargaLocal = DateOnly.FromDateTime(c.FechaCarga.ConvertirAArgentina());
+}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-area="Admin" asp-controller="Comprobantes" asp-action="Index">Todos los comprobantes</a></li>
+        <li class="breadcrumb-item active" aria-current="page">@c.NombreArchivoOriginal</li>
+    </ol>
+</nav>
+
+<div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+    <h1 class="h4 mb-0">@c.NombreArchivoOriginal</h1>
+    @await Html.PartialAsync("_BadgeEstado", c.Estado)
+</div>
+
+@if (Model.EsPropio)
+{
+    <div class="alert alert-info d-flex align-items-center gap-2" role="alert">
+        <i class="bi bi-info-circle-fill"></i>
+        <span>Este comprobante es tuyo. Otro administrador debe revisarlo.</span>
+    </div>
+}
+
+<div class="row g-3">
+    <!-- Columna izquierda: previsualización -->
+    <div class="col-lg-5">
+        <div class="card">
+            <div class="card-header">Vista previa</div>
+            <div class="card-body p-2">
+                @* TODO Almacenamiento: reemplazar el src por la URL SAS obtenida via GET /api/comprobantes/{id}/archivo *@
+                <div id="contenedor-preview" class="d-flex align-items-center justify-content-center bg-light" style="/* Alto fijo para que el iframe/img no empuje el layout */ min-height: 420px; border-radius: 4px;">
+                    <span class="text-muted small">Cargando vista previa…</span>
+                </div>
+            </div>
+            <div class="card-footer">
+                <a id="btn-descargar" href="#" class="btn btn-outline-secondary btn-sm w-100" target="_blank">
+                    <i class="bi bi-download me-1"></i>Descargar
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Columna derecha: datos + historial + acciones -->
+    <div class="col-lg-7">
+
+        <!-- Datos del comprobante -->
+        <div class="card mb-3">
+            <div class="card-header">Datos del comprobante</div>
+            <div class="card-body">
+
+                <dl class="row mb-0">
+                    <dt class="col-sm-4">Empleado</dt>
+                    <dd class="col-sm-8">
+                        @c.EmpleadoNombre
+                        <br><small class="text-muted">@c.EmpleadoEmail</small>
+                    </dd>
+
+                    <dt class="col-sm-4">Archivo</dt>
+                    <dd class="col-sm-8">@c.NombreArchivoOriginal</dd>
+
+                    <dt class="col-sm-4">Tipo</dt>
+                    <dd class="col-sm-8">@c.TipoDocumento.Texto()</dd>
+
+                    <dt class="col-sm-4">Categoría</dt>
+                    <dd class="col-sm-8">@c.Categoria.Texto()</dd>
+
+                    <dt class="col-sm-4">Comercio</dt>
+                    <dd class="col-sm-8">@(c.Comercio ?? "—")</dd>
+
+                    <dt class="col-sm-4">Fecha del comprobante</dt>
+                    <dd class="col-sm-8">@(c.FechaComprobante?.ToString("dd/MM/yyyy") ?? "—")</dd>
+
+                    <dt class="col-sm-4">Descripción</dt>
+                    <dd class="col-sm-8">@(c.Descripcion ?? "—")</dd>
+
+                    <dt class="col-sm-4">Monto</dt>
+                    <dd class="col-sm-8">
+                        @c.Monto.Moneda(c.Moneda)
+                        @if (c.ConfianzaMonto is not null && c.ConfianzaMonto < 0.8)
+                        {
+                            <span class="badge text-bg-warning ms-1" title="Confianza @((c.ConfianzaMonto * 100)?.ToString("0"))%">Revisar</span>
+                        }
+                    </dd>
+
+                    <dt class="col-sm-4">Fecha de carga</dt>
+                    <dd class="col-sm-8">@c.FechaCarga.FechaHoraLocal()</dd>
+
+                    @if (c.FechaPago is not null)
+                    {
+                        <dt class="col-sm-4">Fecha de pago</dt>
+                        <dd class="col-sm-8">@c.FechaPago.Value.FechaHoraLocal()</dd>
+                    }
+
+                    @if (c.EditadoManualmente)
+                    {
+                        <dt class="col-sm-4"></dt>
+                        <dd class="col-sm-8"><span class="badge text-bg-secondary">Editados manualmente</span></dd>
+                    }
+                </dl>
+
+                @if (c.Estado == EstadoComprobante.Rechazado && c.MotivoRechazo is not null)
+                {
+                    <div class="alert alert-danger mt-3 mb-0" role="alert">
+                        <strong>Motivo de rechazo:</strong> @c.MotivoRechazo
+                    </div>
+                }
+
+                @if (c.Estado == EstadoComprobante.ErrorExtraccion && c.MensajeError is not null)
+                {
+                    <div class="alert alert-warning mt-3 mb-0" role="alert">
+                        <strong>Error de extracción:</strong> @c.MensajeError
+                    </div>
+                }
+            </div>
+
+            @if (!Model.EsPropio)
+            {
+                <div class="card-footer d-flex gap-2 flex-wrap">
+                    @if (c.Estado == EstadoComprobante.PendienteRevision)
+                    {
+                        <button type="button" class="btn btn-primary btn-sm" id="btn-tomar">
+                            <i class="bi bi-clipboard-check me-1"></i>Tomar en revisión
+                        </button>
+                    }
+                    @if (c.Estado == EstadoComprobante.EnRevision)
+                    {
+                        <button type="button" class="btn btn-primary btn-sm" id="btn-aprobar">
+                            <i class="bi bi-check-circle me-1"></i>Aprobar
+                        </button>
+                        <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#modalRechazar">
+                            <i class="bi bi-x-circle me-1"></i>Rechazar
+                        </button>
+                    }
+                    @if (c.Estado == EstadoComprobante.Aprobado)
+                    {
+                        <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#modalPagar">
+                            <i class="bi bi-currency-dollar me-1"></i>Marcar pagado
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- Historial -->
+        <div class="card">
+            <div class="card-header">Historial</div>
+            @if (c.Historial.Count == 0)
+            {
+                <div class="card-body text-muted small">Sin registros de estado.</div>
+            }
+            else
+            {
+                <ul class="list-group list-group-flush">
+                    @foreach (var h in c.Historial)
+                    {
+                        <li class="list-group-item">
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                @if (h.EstadoAnterior is not null)
+                                {
+                                    @await Html.PartialAsync("_BadgeEstado", h.EstadoAnterior.Value)
+                                    <i class="bi bi-arrow-right text-muted"></i>
+                                }
+                                @await Html.PartialAsync("_BadgeEstado", h.EstadoNuevo)
+                                <small class="text-muted ms-auto">@h.Fecha.FechaHoraLocal()</small>
+                            </div>
+                            <div class="small text-muted mt-1">
+                                @(h.UsuarioNombre ?? "Procesamiento automático")
+                                @if (!string.IsNullOrWhiteSpace(h.Observacion))
+                                {
+                                    <span> · @h.Observacion</span>
+                                }
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+
+    </div>
+</div>
+
+<!-- Modal rechazar -->
+<div class="modal fade" id="modalRechazar" tabindex="-1" aria-labelledby="modalRechazarLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalRechazarLabel">Rechazar comprobante</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <label for="inputMotivo" class="form-label">Motivo <span class="text-danger">*</span></label>
+                <textarea id="inputMotivo" class="form-control" rows="3" maxlength="500"
+                          placeholder="Escribí el motivo del rechazo…"></textarea>
+                <div class="d-flex justify-content-between mt-1">
+                    <div id="feedbackMotivo" class="invalid-feedback d-block" style="visibility: hidden;">
+                        Escribí un motivo de entre 10 y 500 caracteres.
+                    </div>
+                    <small class="text-muted ms-auto"><span id="contadorMotivo">0</span>/500</small>
+                </div>
+                <small class="text-muted">El empleado va a ver este motivo.</small>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-danger" id="btn-confirmar-rechazar">Rechazar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal pagar -->
+<div class="modal fade" id="modalPagar" tabindex="-1" aria-labelledby="modalPagarLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalPagarLabel">Marcar como pagado</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <label for="inputFechaPago" class="form-label">Fecha de pago <span class="text-danger">*</span></label>
+                <input type="date" id="inputFechaPago" class="form-control"
+                       max="@hoyArgentina.ToString("yyyy-MM-dd")"
+                       min="@fechaCargaLocal.ToString("yyyy-MM-dd")"
+                       value="@hoyArgentina.ToString("yyyy-MM-dd")" />
+                <div id="feedbackFechaPago" class="invalid-feedback">
+                    Ingresá una fecha válida (no futura y no anterior a la fecha de carga).
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-success" id="btn-confirmar-pagar">Marcar pagado</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast de feedback -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1100;">
+    <div id="toastAccion" class="toast align-items-center border-0" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+            <div class="toast-body" id="toastMensaje"></div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Cerrar"></button>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        const COMPROBANTE_ID = @c.Id;
+        const FECHA_CARGA_MIN = "@fechaCargaLocal.ToString("yyyy-MM-dd")";
+    </script>
+    <script src="~/js/admin-detalle.js" asp-append-version="true"></script>
+}
