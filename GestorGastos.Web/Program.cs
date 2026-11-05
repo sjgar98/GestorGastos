@@ -17,6 +17,8 @@ builder.Services.AddDbContext<GestorGastosDbContext>(options =>
 
 builder.Services.AddScoped<IUsuarioRepositorio, UsuarioRepositorio>();
 builder.Services.AddScoped<IUsuarioServicio, UsuarioServicio>();
+builder.Services.AddScoped<IComprobanteRepositorio, ComprobanteRepositorio>();
+builder.Services.AddScoped<IComprobanteServicio, ComprobanteServicio>();
 
 builder.Services.AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
     .AddMicrosoftIdentityWebApp(
