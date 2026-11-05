@@ -1,0 +1,14 @@
+﻿@model GestorGastos.DTOs.ComprobanteDetalleDto
+
+<h1>@Model.NombreArchivoOriginal</h1>
+<p>Estado: @Model.Estado</p>
+<p>Monto: @Model.Monto</p>
+<p>Comercio: @Model.Comercio</p>
+
+<h2>Historial</h2>
+<ul>
+    @foreach (var cambio in Model.Historial)
+    {
+        <li>@cambio.EstadoAnterior → @cambio.EstadoNuevo (@(cambio.NombreUsuario ?? "Procesamiento automático"))</li>
+    }
+</ul>

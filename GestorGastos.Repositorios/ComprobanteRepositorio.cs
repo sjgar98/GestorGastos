@@ -17,6 +17,7 @@ namespace GestorGastos.Repositorios
         {
             return await _contexto.Comprobantes
                 .Include(c => c.Historial)
+                .ThenInclude(h => h.Usuario)
                 .FirstOrDefaultAsync(c => c.Id == id);
         }
 
