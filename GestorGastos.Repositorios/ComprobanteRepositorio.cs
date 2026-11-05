@@ -29,5 +29,14 @@ namespace GestorGastos.Repositorios
         {
             await _contexto.SaveChangesAsync();
         }
+
+        public async Task<Comprobante?> ObtenerPorIdConUsuarioAsync(int id)
+        {
+            return await _contexto.Comprobantes
+                .Include(c => c.Usuario)
+                .Include(c => c.Historial)
+                    .ThenInclude(h => h.Usuario)
+                .FirstOrDefaultAsync(c => c.Id == id);
+        }
     }
 }

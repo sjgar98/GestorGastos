@@ -1,4 +1,4 @@
-﻿namespace GestorGastos.Servicios
+namespace GestorGastos.Servicios
 {
     public class Resultado<T>
     {
