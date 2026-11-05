@@ -173,7 +173,7 @@
                             <small class="text-muted">@FormatearFechaHora(cambio.Fecha)</small>
                         </div>
                         <div class="small mt-1">
-                            @(cambio.NombreUsuario ?? "Procesamiento automático")
+                            @(cambio.UsuarioNombre ?? "Procesamiento automático")
                             @if (!string.IsNullOrWhiteSpace(cambio.Observacion))
                             {
                                 <span class="text-muted">· @cambio.Observacion</span>

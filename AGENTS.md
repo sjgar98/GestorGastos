@@ -298,7 +298,7 @@ Leyenda: ✅ hecho · 🟡 parcial/mock · ❌ no existe. Actualizar en cada PR.
 | — | `compose.yaml` (SQL Server + Azurite), `.env.example`, `local.settings.example.json` | — | — | ✅ |
 | — | Modelo + migración inicial | — | — | ✅ `Usuario`, `Comprobante`, `HistorialEstado` + enums en DTOs; migración `Inicial` (la web aplica las migraciones al arrancar, en todos los entornos) |
 | — | Auth Entra ID (OIDC, App Roles, fallback policy) + alta/actualización de `Usuario` | — | — | ✅ `AddMicrosoftIdentityWebApp` con `OnTokenValidated` → `UsuarioServicio.RegistrarAccesoAsync` (`UsuarioRepositorio`), `AccessDeniedPath`, fallback policy con rol; login/logout en `CuentaController` |
-| — | Layout con navbar (Dashboard, Mis comprobantes, Cargar, Administración solo admin; usuario → rol, email, Cerrar sesión) | `_Layout.cshtml` | — | ✅ Navbar completa según rol (solo con sesión) + `@Html.AntiForgeryToken()` para los `fetch`. Los links a Mis comprobantes, Cargar y Administración dan 404 hasta que existan esas pantallas (hrefs fijos; pasarlos a `asp-*` al crearlas) |
+| — | Layout con navbar (Dashboard, Mis comprobantes, Cargar, Administración solo admin; usuario → rol, email, Cerrar sesión) | `_Layout.cshtml` | — | ✅ Navbar completa según rol (solo con sesión) + `@Html.AntiForgeryToken()` para los `fetch`. Los links a Mis comprobantes y Cargar dan 404 hasta que existan esas pantallas; Administración apunta a `/Admin/Comprobantes` |
 | P1 | Bienvenida / Login (redirige a Dashboard si hay sesión) | `HomeController.Index` `[AllowAnonymous]` sin sesión → vista `Bienvenida` | — | ✅ Botón → `Cuenta/IniciarSesion` |
 | — | Acceso denegado (sin rol o Empleado en `/Admin`) | `CuentaController.AccesoDenegado` | — | ✅ Responde 403; Cerrar sesión solo si hay sesión |
 | P2 | Dashboard (abiertos + desglose + alerta de errores) | `HomeController.Index` con sesión (sin rol → Acceso denegado) | — | 🟡 Placeholder: solo "Hola, <nombre>" y un aviso de que no está disponible |
@@ -306,8 +306,8 @@ Leyenda: ✅ hecho · 🟡 parcial/mock · ❌ no existe. Actualizar en cada PR.
 | P4 | Cargar — etapa 1 (archivo, tipo, categoría, miniatura, Quitar) | `ComprobantesController.Cargar` GET/POST | — | ❌ |
 | P4 | Cargar — etapa 2 (polling 3 s / 2 min, resultado, edición, Revisar < 0,8) | `ComprobantesController.Resultado/{id}` + `Editar [POST]` | `GET api/comprobantes/{id}/estado` | ❌ |
 | P5 | Detalle (datos, preview SAS, descargar, editar, eliminar, historial) | `ComprobantesController.Detalle/{id}`, `Editar [POST]` | `GET api/comprobantes/{id}/archivo?descarga=` | ❌ |
-| P6 | Todos los comprobantes (filtros estado + empleado, orden, paginación, acciones por estado, modales) | `Admin/ComprobantesController.Index` | `POST api/admin/comprobantes/{id}/tomar\|aprobar\|rechazar\|pagar` | ❌ |
-| P7 | Detalle administración (empleado nombre + email, acciones de estado, sin editar/eliminar) | `Admin/ComprobantesController.Detalle/{id}` | ídem P6 + `archivo` | ❌ |
+| P6 | Todos los comprobantes (filtros estado + empleado, orden, paginación, acciones por estado, modales) | `Admin/ComprobantesController.Index` | `POST api/admin/comprobantes/{id}/tomar\|aprobar\|rechazar\|pagar` | 🟡 API de acciones implementada; listado MVC todavía es placeholder |
+| P7 | Detalle administración (empleado nombre + email, acciones de estado, sin editar/eliminar) | `Admin/ComprobantesController.Detalle/{id}` | ídem P6 + `archivo` | 🟡 Vista y acción de detalle implementadas; falta preview/descarga y completar integración de acciones |
 | — | Timeout: Procesando > 5 min → ErrorExtraccion al consultar estado | — | dentro de `GET .../estado` | ❌ |
 | — | Validación de archivo (extensión, magic bytes, 4 MB, aviso PDF > 2 páginas) | — | — | ❌ |
 | — | Function de extracción (receipt/invoice, idempotente, historial) | — | — | ❌ |
@@ -340,8 +340,48 @@ Pendientes / mocks activos (agregar una fila por cada mock o integración a medi
 |---|---|---|
 | Dashboard (P2) placeholder (sin contadores ni alerta de errores) | `Web/Views/Home/Index.cshtml` | — |
 | Links de la navbar a pantallas que no existen todavía (hrefs fijos) | `Web/Views/Shared/_Layout.cshtml` | — |
+| Carga real de comprobantes (formulario, `IFormFile`, Blob y creación del registro) | `Web/Controllers/ComprobantesController.cs`, `Web/Controllers/Api/ComprobantesController.cs` | `TODO Carga` |
+| Preview y descarga del archivo en el detalle administrativo | `Web/Areas/Admin/Views/Comprobantes/Detalle.cshtml` | `TODO Almacenamiento` |
 | `/api`: sin sesión o sin rol hoy redirige (a Entra ID / Acceso denegado); debería responder 401/403 `ProblemDetails`. Resolver con los eventos `OnRedirectToIdentityProvider` (OIDC) y `OnRedirectToAccessDenied` (cookie) al crear el primer controller API | `Web/Program.cs` | — |
 | `ExtraerComprobanteFunction` y registro de servicios compartidos | `Functions/Program.cs` | `TODO Extracción` |
+
+### Prueba manual temporal del detalle administrativo
+
+La ruta MVC `/Admin/Comprobantes/Detalle/{id}` y su vista ya existen, pero devuelve `404` si no
+hay un registro con ese `id` en la base de datos. Para probarla antes de implementar P4, se puede
+insertar temporalmente un comprobante directamente en SQL Server usando un `UsuarioId` existente:
+
+```sql
+DECLARE @UsuarioId nvarchar(36);
+
+SELECT TOP 1 @UsuarioId = Id
+FROM Usuarios
+ORDER BY UltimoAcceso DESC;
+
+IF @UsuarioId IS NULL
+    THROW 50000, 'No existe ningún usuario. Inicia sesión primero.', 1;
+
+INSERT INTO Comprobantes
+(
+    UsuarioId, NombreArchivoOriginal, BlobNombre, ContentType, TamanioBytes,
+    TipoDocumento, Categoria, Comercio, FechaComprobante, Descripcion, Monto,
+    Moneda, ConfianzaDescripcion, ConfianzaMonto, EditadoManualmente, Estado,
+    MensajeError, MotivoRechazo, FechaCarga, FechaPago
+)
+OUTPUT INSERTED.Id
+VALUES
+(
+    @UsuarioId, 'comprobante-prueba.pdf', 'prueba-detalle-001', 'application/pdf', 1024,
+    'Factura', 'Otros', 'Comercio de prueba', CAST(GETUTCDATE() AS date),
+    'Comprobante creado para probar la vista de detalle', 1500.00, 'ARS', 1.0, 1.0, 0,
+    'PendienteRevision', NULL, NULL, GETUTCDATE(), NULL
+);
+```
+
+Usar el `Id` devuelto en `https://localhost:7282/Admin/Comprobantes/Detalle/{id}` y eliminar el
+registro al terminar (`DELETE FROM Comprobantes WHERE Id = <id>;`). Este registro permite probar
+la vista, pero no crea un archivo real en Blob Storage; por eso la preview y la descarga seguirán
+pendientes hasta implementar `TODO Almacenamiento`.
 
 ## 7. Requisitos funcionales (resumen del enunciado)
 
