@@ -90,10 +90,10 @@ dotnet user-secrets set "AzureAd:ClientSecret" "<valor>" --project GestorGastos.
   usa LocalDB `(localdb)\MSSQLLocalDB/GestorGastos` (Windows) y con ella arma la cadena con
   `GESTORGASTOS_DB_HOST/PORT/NAME/USER/PASSWORD` (Docker, Linux/macOS). Fuera de Windows y sin ninguna de las dos falla al arrancar.
   En local **no** se guarda la connection string en User Secrets ni en `local.settings.json` (si estuviera, gana sobre lo anterior).
-- `.env` (copiado de `.env.example`, solo Linux/macOS): lo usan `docker compose` y la web/Function para conectarse.
+- `.env` (copiado de `.env.example`; en Linux/macOS siempre, en Windows solo para usar SQL Server en Docker en vez de LocalDB): lo usan `docker compose` y la web/Function para conectarse.
   La contraseña de `sa` tiene que cumplir la política de SQL Server (8+ caracteres con mayúsculas, minúsculas y
   números o símbolos). En la terminal hay que exportarlo (`set -a && source .env && set +a`) antes de `dotnet run`,
-  `dotnet ef` o `func start`; el launch de VS Code lo carga solo (`envFile`, solo en Linux).
+  `dotnet ef` o `func start`; el launch de VS Code lo carga solo (`envFile`, en Linux y Windows; en Windows, si no existe, la tarea `crear-env-vacio` lo crea vacío y se usa LocalDB).
 - `GestorGastosDbContext` recibe las opciones por constructor (no tiene `OnConfiguring`): la connection string
   la registran `Web/Program.cs` y `Functions/Program.cs` con `AddDbContext`. Por eso las migraciones usan
   `--startup-project GestorGastos.Web` (`migrations add` no se conecta).

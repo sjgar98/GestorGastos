@@ -1,15 +1,20 @@
 using GestorGastos.DTOs;
+using GestorGastos.DTOs.Admin;
 using GestorGastos.DTOs.Enums;
+using GestorGastos.DTOs.Helpers;
 using GestorGastos.Entidades;
 using GestorGastos.Repositorios.Interfaces;
 using GestorGastos.Servicios.Interfaces;
 using Microsoft.Extensions.Logging;
-using GestorGastos.DTOs.Helpers;
 
 namespace GestorGastos.Servicios
 {
     public class ComprobanteServicio : IComprobanteServicio
     {
+        private readonly IComprobanteRepositorio _comprobanteRepositorio;
+        private readonly IAlmacenamientoArchivos _almacenamientoArchivos;
+        private readonly ILogger<ComprobanteServicio> _logger;
+        private const int TamanoPaginaDefault = 10;
         private static readonly TimeSpan TiempoMaximoProcesando = TimeSpan.FromMinutes(5);
         private const string MensajeTiempoAgotado = "El análisis tardó demasiado. Completá los datos manualmente.";
         private const string MensajeNoEncontrado = "El comprobante no existe.";
@@ -20,10 +25,6 @@ namespace GestorGastos.Servicios
         private const int LargoMaximoComercio = 200;
         private const int LargoMaximoTexto = 500;
 
-        private readonly IComprobanteRepositorio _comprobanteRepositorio;
-        private readonly IAlmacenamientoArchivos _almacenamientoArchivos;
-        private readonly ILogger<ComprobanteServicio> _logger;
-
         public ComprobanteServicio(
             IComprobanteRepositorio comprobanteRepositorio,
             IAlmacenamientoArchivos almacenamientoArchivos,
@@ -32,6 +33,34 @@ namespace GestorGastos.Servicios
             _comprobanteRepositorio = comprobanteRepositorio;
             _almacenamientoArchivos = almacenamientoArchivos;
             _logger = logger;
+        }
+
+        public async Task<PaginadoDto<ComprobanteAdminListadoDto>> ListarAdminAsync(FiltroAdminComprobantesDto filtro)
+        {
+            if (filtro.Pagina < 1) filtro.Pagina = 1;
+
+            var (elementosEntidad, total) = await _comprobanteRepositorio.ListarAdminAsync(filtro, TamanoPaginaDefault);
+
+            var elementosDto = elementosEntidad.Select(c => new ComprobanteAdminListadoDto
+            {
+                Id = c.Id,
+                UsuarioId = c.UsuarioId,
+                NombreEmpleado = c.Usuario?.Nombre ?? "Desconocido",
+                EmailEmpleado = c.Usuario?.Email ?? string.Empty,
+                NombreArchivoOriginal = c.NombreArchivoOriginal,
+                FechaCarga = c.FechaCarga,
+                Monto = c.Monto,
+                Moneda = c.Moneda.ToString(),
+                Estado = c.Estado.ToString()
+            }).ToList();
+
+            return new PaginadoDto<ComprobanteAdminListadoDto>
+            {
+                Elementos = elementosDto,
+                TotalRegistros = total,
+                PaginaActual = filtro.Pagina,
+                TamanoPagina = TamanoPaginaDefault
+            };
         }
 
         public async Task<Resultado<CargaRealizadaDto>> CargarAsync(string usuarioId, CargaComprobanteDto datos, Stream contenido)
@@ -495,6 +524,11 @@ namespace GestorGastos.Servicios
                 Estado = c.Estado,
                 EstadoTexto = c.Estado.Texto()
             };
+        }
+
+        public Task<ComprobanteAdminDetalleDto?> ObtenerDetalleAdminAsync(int id)
+        {
+            throw new NotImplementedException();
         }
     }
 }

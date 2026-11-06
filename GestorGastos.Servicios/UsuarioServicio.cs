@@ -1,3 +1,4 @@
+using GestorGastos.DTOs;
 using GestorGastos.Entidades;
 using GestorGastos.Repositorios.Interfaces;
 using GestorGastos.Servicios.Interfaces;
@@ -27,5 +28,18 @@ namespace GestorGastos.Servicios
             usuario.UltimoAcceso = DateTime.UtcNow;
             await _usuarioRepositorio.GuardarCambiosAsync();
         }
+
+        public async Task<IEnumerable<UsuarioDto>> ListarEmpleadosAsync()
+        {
+            var usuarios = await _usuarioRepositorio.ListarTodosAsync();
+            return usuarios.Select(u => new UsuarioDto
+            {
+                Id = u.Id,
+                Nombre = u.Nombre,
+                Email = u.Email
+            }).ToList();
+        }
+
+      
     }
 }

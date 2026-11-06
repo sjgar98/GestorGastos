@@ -5,13 +5,16 @@
       "name": "Web",
       "type": "coreclr",
       "request": "launch",
-      "preLaunchTask": "build",
+      "preLaunchTask": "preparar-launch",
       "program": "${workspaceFolder}/GestorGastos.Web/bin/Debug/net10.0/GestorGastos.Web.dll",
       "cwd": "${workspaceFolder}/GestorGastos.Web",
       "launchSettingsProfile": "https",
       "console": "internalConsole",
-      // LocalDB no existe en Linux: las variables GESTORGASTOS_DB_* se toman de .env (ver .env.example). Solo aplica en Linux.
+      // Las variables GESTORGASTOS_DB_* se toman de .env (ver .env.example): en Linux porque no existe LocalDB, en Windows para usar SQL Server en Docker. En Windows, si no existe, preparar-launch crea un .env vacío (envFile no admite archivos opcionales) y se usa LocalDB.
       "linux": {
+        "envFile": "${workspaceFolder}/.env"
+      },
+      "windows": {
         "envFile": "${workspaceFolder}/.env"
       },
       "serverReadyAction": {
