@@ -25,6 +25,11 @@ namespace GestorGastos.Repositorios
             await _contexto.Comprobantes.AddAsync(comprobante);
         }
 
+        public void Eliminar(Comprobante comprobante)
+        {
+            _contexto.Comprobantes.Remove(comprobante);
+        }
+
         public async Task GuardarCambiosAsync()
         {
             await _contexto.SaveChangesAsync();

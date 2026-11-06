@@ -1,0 +1,9 @@
+/* Cargar comprobante (P4): la miniatura del archivo elegido tiene tamaño fijo para que imágenes de
+   cualquier proporción y el ícono de PDF ocupen el mismo lugar; Bootstrap no tiene utilidades de
+   ancho/alto en píxeles ni de object-fit. */
+.miniatura-archivo {
+    width: 56px;
+    height: 72px;
+    flex-shrink: 0;
+    object-fit: cover;
+}
