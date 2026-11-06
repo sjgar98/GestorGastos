@@ -1,0 +1,191 @@
+﻿@model GestorGastos.DTOs.Admin.ComprobanteAdminDetalleDto
+@using GestorGastos.Web.Helpers
+@using Microsoft.Identity.Web
+
+@{
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    ViewData["Title"] = $"Detalle de comprobante #{Model.Id}";
+    var adminId = User.GetObjectId();
+    var esPropio = Model.UsuarioId == adminId;
+
+    var badgeClass = Model.Estado switch
+    {
+        GestorGastos.DTOs.Enums.EstadoComprobante.Procesando => "bg-secondary",
+        GestorGastos.DTOs.Enums.EstadoComprobante.ErrorExtraccion => "bg-danger",
+        GestorGastos.DTOs.Enums.EstadoComprobante.PendienteRevision => "bg-warning text-dark",
+        GestorGastos.DTOs.Enums.EstadoComprobante.EnRevision => "bg-info text-dark",
+        GestorGastos.DTOs.Enums.EstadoComprobante.Aprobado => "bg-success",
+        GestorGastos.DTOs.Enums.EstadoComprobante.Rechazado => "bg-dark",
+        GestorGastos.DTOs.Enums.EstadoComprobante.Pagado => "bg-primary",
+        _ => "bg-secondary"
+    };
+}
+
+<div class="container-fluid py-4">
+    <!-- Encabezado con Botón de Regreso -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <a href="@Url.Action("Index", "Comprobantes", new { area = "Admin" })" class="btn btn-outline-secondary btn-sm mb-2">
+                &larr; Volver al listado
+            </a>
+            <h2 class="mb-0">
+                Comprobante: @Model.NombreArchivoOriginal
+                <span class="badge @badgeClass ms-2">@Model.Estado</span>
+                @if (esPropio)
+                {
+                    <span class="badge bg-secondary ms-1" title="Este comprobante fue subido por vos">Propio</span>
+                }
+            </h2>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Columna Izquierda: Información Principal y Datos Extraídos -->
+        <div class="col-lg-8">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="card-title mb-0">Información del Comprobante</h5>
+                </div>
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <dt class="col-sm-4">Empleado</dt>
+                        <dd class="col-sm-8">@Model.NombreEmpleado <span class="text-muted">(@Model.EmailEmpleado)</span></dd>
+
+                        <dt class="col-sm-4">Comercio</dt>
+                        <dd class="col-sm-8">@(Model.Comercio ?? "No especificado")</dd>
+
+                        <dt class="col-sm-4">Categoría</dt>
+                        <dd class="col-sm-8">@Model.Categoria</dd>
+
+                        <dt class="col-sm-4">Tipo de Documento</dt>
+                        <dd class="col-sm-8">@Model.TipoDocumento</dd>
+
+                        <dt class="col-sm-4">Fecha del Comprobante</dt>
+                        <dd class="col-sm-8">@(Model.FechaComprobante?.ToString("dd/MM/yyyy") ?? "Sin fecha")</dd>
+
+                        <dt class="col-sm-4">Monto</dt>
+                        <dd class="col-sm-8 fs-5 fw-bold text-success">
+                            @Model.Monto.Moneda(Model.Moneda?.ToString())
+                        </dd>
+
+                        <dt class="col-sm-4">Descripción</dt>
+                        <dd class="col-sm-8">@(Model.Descripcion ?? "Sin descripción")</dd>
+
+                        <dt class="col-sm-4">Fecha de Carga</dt>
+                        <dd class="col-sm-8">@Model.FechaCarga.FechaHoraLocal()</dd>
+                    </dl>
+                </div>
+            </div>
+
+            <!-- Card de Confianza IA / Errores -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="card-title mb-0">Detalles del Procesamiento</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-4">
+                            <div class="p-2 border rounded">
+                                <small class="text-muted d-block">Confianza Descripción</small>
+                                <strong>@(Model.ConfianzaDescripcion.HasValue ? $"{Model.ConfianzaDescripcion.Value * 100:F0}%" : "N/A")</strong>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="p-2 border rounded">
+                                <small class="text-muted d-block">Confianza Monto</small>
+                                <strong>@(Model.ConfianzaMonto.HasValue ? $"{Model.ConfianzaMonto.Value * 100:F0}%" : "N/A")</strong>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="p-2 border rounded">
+                                <small class="text-muted d-block">Editado Manualmente</small>
+                                <strong>@(Model.EditadoManualmente ? "Sí" : "No")</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(Model.MensajeError))
+                    {
+                        <div class="alert alert-danger mt-3 mb-0">
+                            <strong>Error de Extracción:</strong> @Model.MensajeError
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrEmpty(Model.MotivoRechazo))
+                    {
+                        <div class="alert alert-warning mt-3 mb-0">
+                            <strong>Motivo de Rechazo:</strong> @Model.MotivoRechazo
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Historial de Estados -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-light">
+                    <h5 class="card-title mb-0">Historial de Cambios</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Estado Anterior</th>
+                                    <th>Estado Nuevo</th>
+                                    <th>Usuario</th>
+                                    <th>Observación</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (Model.Historial != null && Model.Historial.Any())
+                                {
+                                    foreach (var h in Model.Historial)
+                                    {
+                                        <tr>
+                                            <td>@h.Fecha.FechaHoraLocal()</td>
+                                            <td>@(h.EstadoAnterior?.ToString() ?? "-")</td>
+                                            <td><span class="badge bg-info text-dark">@h.EstadoNuevo</span></td>
+                                            <td>@h.NombreUsuario</td>
+                                            <td>@(h.Observacion ?? "-")</td>
+                                        </tr>
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="5" class="text-center py-3 text-muted">No hay registro de cambios previos.</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Columna Derecha: Vista Previa del Archivo -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="card-title mb-0">Archivo Adjunto</h5>
+                </div>
+                <div class="card-body text-center">
+                    <p class="text-muted small mb-2">@Model.NombreArchivoOriginal (@(Model.TamanioBytes / 1024) KB)</p>
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-outline-primary" type="button" disabled>
+                            Descargar Comprobante
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            @if (esPropio)
+            {
+                <div class="alert alert-info">
+                    <small>Este comprobante es tuyo. Como Administrador no podés aprobar ni rechazar tus propios comprobantes.</small>
+                </div>
+            }
+        </div>
+    </div>
+</div>
