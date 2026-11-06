@@ -249,6 +249,22 @@ namespace GestorGastos.Servicios
             return Resultado<CambioEstadoRespuestaDto>.Exito(ACambioEstadoDto(comprobante));
         }
 
+        public async Task<Resultado<UrlArchivoDto>> ObtenerUrlArchivoAsync(int comprobanteId, string usuarioId, bool esAdministrador, bool descarga)
+        {
+            var comprobante = await _comprobanteRepositorio.ObtenerPorIdAsync(comprobanteId);
+
+            if (comprobante == null || (!esAdministrador && comprobante.UsuarioId != usuarioId))
+            {
+                return Resultado<UrlArchivoDto>.Fallo(TipoError.NoEncontrado, "El comprobante no existe.");
+            }
+
+            var nombreDescarga = descarga ? comprobante.NombreArchivoOriginal : null;
+            var url = await _almacenamientoArchivos.GenerarUrlLecturaAsync(comprobante.BlobNombre, nombreDescarga);
+            url.ContentType = comprobante.ContentType;
+
+            return Resultado<UrlArchivoDto>.Exito(url);
+        }
+
         // ── Helpers privados ──────────────────────────────────────────────────────
 
         private static bool EsEditablePorElDuenio(EstadoComprobante estado)

@@ -15,5 +15,6 @@ namespace GestorGastos.Servicios.Interfaces
         Task<Resultado<CambioEstadoRespuestaDto>> AprobarAsync(int id, string adminId);
         Task<Resultado<CambioEstadoRespuestaDto>> RechazarAsync(int id, string adminId, string motivo);
         Task<Resultado<CambioEstadoRespuestaDto>> MarcarPagadoAsync(int id, string adminId, DateOnly fechaPago);
+        Task<Resultado<UrlArchivoDto>> ObtenerUrlArchivoAsync(int comprobanteId, string usuarioId, bool esAdministrador, bool descarga);
     }
 }
