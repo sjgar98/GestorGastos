@@ -143,7 +143,7 @@ GestorGastos.DTOs: enums + DTOs, referenciado por todos.  Application Insights: 
 | `GestorGastos.DTOs` | DTOs de entrada/salida (API y formularios), `Enums/` (`EstadoComprobante`, `TipoDocumento`, `Categoria`, `Moneda`), `Validaciones/` (atributos custom: `FechaNoFutura`, `MaximoDosDecimales`), `Helpers/` (`EtiquetasHelper`, `FechaHelper`) | — |
 | `GestorGastos.Entidades` | Entidades EF, `GestorGastosDbContext`, `Migrations/` | DTOs (enums) |
 | `GestorGastos.Repositorios` | `Interfaces/I*Repositorio` + implementación; **único** lugar con queries EF | Entidades |
-| `GestorGastos.Servicios` | Lógica de negocio compartida web + Function: `ComprobanteServicio` (máquina de estados, historial, RN), `UsuarioServicio`, `ValidadorArchivo` (magic bytes), abstracciones `IAlmacenamientoArchivos` e `IExtractorDocumentos` con sus implementaciones, mapeo entidad→DTO | Repositorios, Entidades, DTOs |
+| `GestorGastos.Servicios` | Lógica de negocio compartida web + Function: `ComprobanteServicio` (máquina de estados, historial, RN), `ExtraccionServicio` (orquesta la extracción; solo lo usa la Function), `UsuarioServicio`, `ValidadorArchivo` (magic bytes), abstracciones `IAlmacenamientoArchivos` e `IExtractorDocumentos` con sus implementaciones, mapeo entidad→DTO | Repositorios, Entidades, DTOs |
 | `GestorGastos.Web` | `Controllers/` (MVC), `Controllers/Api/` (API), `Areas/Admin/` (P6/P7), `Views/`, `Models/` (ViewModels de vistas), `Helpers/`, `wwwroot/js`, `wwwroot/css/site.css`, `Program.cs` (DI, auth, App Insights) | Servicios, DTOs (+ Entidades solo para el `DbContext` en DI) |
 | `GestorGastos.Functions` | `ExtraerComprobanteFunction` (Blob Trigger) y su `Program.cs` (DI, App Insights) | Servicios, DTOs (+ Entidades solo para el `DbContext` en DI) |
 
@@ -155,10 +155,12 @@ No hay proyecto de tests (ver 0).
    **Procesando** + historial (`null → Procesando`) y **después** sube el blob `{GUID}.{ext}`. Si la
    subida falla, borra el registro. Redirige a la etapa 2 con el id.
 2. El blob nuevo dispara la Function (en Azure, Blob Trigger con `Source = EventGrid`; el clásico demora minutos).
-3. La Function busca por `BlobNombre`; si el comprobante ya no está en Procesando, no hace nada (RN-27).
-   Elige modelo por `TipoDocumento` (RN-21) y llama a `IExtractorDocumentos`.
-4. Guarda los datos y pasa a **PendienteRevision**, o a **ErrorExtraccion** con `MensajeError`
-   (RN-25). Siempre registra historial con `UsuarioId = null`.
+3. `ExtraerComprobanteFunction` delega en `ExtraccionServicio.ProcesarAsync`: busca por `BlobNombre`; si el comprobante
+   no existe o ya no está en Procesando, no hace nada (RN-27). Elige modelo por `TipoDocumento` (RN-21) y llama a `IExtractorDocumentos`.
+4. `ComprobanteServicio.RegistrarExtraccionAsync` guarda los datos y pasa a **PendienteRevision**, o a **ErrorExtraccion** con
+   `MensajeError` (RN-25) conservando lo que sí se detectó. Si el extractor lanza una excepción, `RegistrarFallaExtraccionAsync` deja
+   ErrorExtraccion con un mensaje genérico y el detalle va al log. Siempre registra historial con `UsuarioId = null`. Si falla
+   la base, la excepción sube para que el trigger reintente.
 5. La vista consulta `GET /api/comprobantes/{id}/estado` cada 3 s, máximo 2 minutos.
 
 ### Reglas duras
@@ -319,9 +321,9 @@ Leyenda: ✅ hecho · 🟡 parcial/mock · ❌ no existe. Actualizar en cada PR.
 | P7 | Detalle administración (empleado nombre + email, acciones de estado, sin editar/eliminar) | `Admin/ComprobantesController.Detalle/{id}` | ídem P6 + `archivo` | 🟡 Vista y acción de detalle implementadas; falta preview/descarga y completar integración de acciones |
 | — | Timeout: Procesando > 5 min → ErrorExtraccion al consultar estado | — | dentro de `GET .../estado` | ✅ `ComprobanteServicio.ObtenerEstadoAsync` (lo usan la API y `Resultado/{id}`): pasa a ErrorExtraccion con "El análisis tardó demasiado…" e historial con `UsuarioId = null` |
 | — | Validación de archivo (extensión, magic bytes, 4 MB, aviso PDF > 2 páginas) | — | — | ✅ `Servicios/ValidadorArchivo` (estático): RN-01 a RN-04 con los mensajes del enunciado; RN-06 cuenta `/Type /Page` sin descomprimir el PDF (si las páginas están en object streams comprimidos no avisa). El cliente replica extensión, tamaño y conteo de páginas |
-| — | Function de extracción (receipt/invoice, idempotente, historial) | — | — | ❌ |
+| — | Function de extracción (receipt/invoice, idempotente, historial) | — | — | 🟡 `ExtraerComprobanteFunction` + `ExtraccionServicio` + `ExtractorDocumentIntelligence` / `ExtractorDocumentosMock`. Probada en local con `func start` + Azurite (mock, y el extractor real contra un servidor falso con la forma REST de Document Intelligence). Falta probarla en Azure: Document Intelligence real y Event Grid (ver 6) |
 | — | Vista de error genérica (sin detalles técnicos) | `HomeController.Error` | `ProblemDetails` | ✅ Vista `Error` genérica + `UseExceptionHandler` fuera de Development + `AddProblemDetails`; `Resultado<T>` se traduce con `ComoProblema` (API) y `ComoVista` (MVC), ver 3 |
-| — | Almacenamiento de archivos (Blob Storage) | — | — | 🟡 `Servicios/AlmacenamientoArchivos` (singleton en `Web/Program.cs`): `SubirAsync` (crea el contenedor si no existe), `EliminarAsync` (`DeleteIfExistsAsync`), `GenerarUrlLecturaAsync` → `UrlArchivoDto` (SAS de lectura de 5 min sobre un blob; con `nombreDescarga` fija `Content-Disposition: attachment`). Carga y eliminación ya lo usan; falta el endpoint `GET api/comprobantes/{id}/archivo` (P5/P7), único consumidor de `GenerarUrlLecturaAsync`. No está registrado en la Function |
+| — | Almacenamiento de archivos (Blob Storage) | — | — | 🟡 `Servicios/AlmacenamientoArchivos` (singleton en `Web/Program.cs`): `SubirAsync` (crea el contenedor si no existe), `EliminarAsync` (`DeleteIfExistsAsync`), `GenerarUrlLecturaAsync` → `UrlArchivoDto` (SAS de lectura de 5 min sobre un blob; con `nombreDescarga` fija `Content-Disposition: attachment`). Carga y eliminación ya lo usan; falta el endpoint `GET api/comprobantes/{id}/archivo` (P5/P7), único consumidor de `GenerarUrlLecturaAsync`. También registrado en la Function, porque `ComprobanteServicio` depende de él |
 | — | Application Insights + logs de 7.6 en web y Function | — | — | ❌ |
 | — | Despliegue (App Service, Function App, Azure SQL, Storage, Event Grid, DI F0) | — | — | ❌ |
 | — | README (diagrama, recursos, App Registration + App Roles, variables, correr local, desplegar) | — | — | ❌ |
@@ -338,8 +340,8 @@ elige por configuración en `Program.cs` (web y Function), nunca con `if` en la 
 | Dependencia | Abstracción | Local / mock | Azure | Cómo se elige |
 |---|---|---|---|---|
 | Blob Storage | `IAlmacenamientoArchivos` (`SubirAsync`, `EliminarAsync` tolerando inexistente, `GenerarUrlLecturaAsync(blob, nombreDescarga?, 5 min)`) | Azurite (mismo SDK; SAS funciona con la cuenta de desarrollo) | Azure Storage con connection string que incluya la clave de la cuenta (la SAS se firma con ella). Managed Identity + User Delegation SAS requeriría cambiar `AlmacenamientoArchivos` | `Storage:ConnectionString` + `Storage:Contenedor` (vacías → excepción al resolver el servicio) |
-| Document Intelligence | `IExtractorDocumentos` (`ExtraerAsync(stream, TipoDocumento)` → comercio, fecha, ítems, monto, moneda, confianzas) | `ExtractorDocumentosMock`: determinístico; si el nombre del blob/archivo original contiene `error` o `borroso` falla con "No se detectó el monto total del comprobante."; si no, devuelve datos de ejemplo con `ConfianzaDescripcion` < 0,8 | `ExtractorDocumentIntelligence` con `prebuilt-receipt` / `prebuilt-invoice` | `DocumentIntelligence:Endpoint` vacío → mock |
-| Disparo de la Function | Blob Trigger | Azurite + `func start` (trigger clásico, polling) | Blob Trigger `Source = EventGrid` + suscripción Event Grid | Configuración del trigger / App Settings |
+| Document Intelligence | `IExtractorDocumentos` (`ExtraerAsync(stream, TipoDocumento, nombreArchivo, cancelacion)` → `DatosExtraidos`: comercio, fecha, descripción, monto, moneda, confianzas; `nombreArchivo` es el original y solo lo usa el mock) | `ExtractorDocumentosMock`: determinístico; si el nombre original contiene `error` o `borroso` devuelve datos vacíos, lo que termina en "No se detectó el monto total del comprobante."; si no, devuelve datos de ejemplo con `ConfianzaDescripcion` < 0,8. Cada uso deja un `LogWarning` | `ExtractorDocumentIntelligence` con `prebuilt-receipt` / `prebuilt-invoice` | `DocumentIntelligence:Endpoint` vacío → mock |
+| Disparo de la Function | Blob Trigger | Azurite + `func start` (trigger clásico, polling) | Blob Trigger `Source = EventGrid` + suscripción Event Grid | `#if DEBUG` en `ExtraerComprobanteFunction`: el build Debug usa el trigger clásico y Release, Event Grid. Conexión: `Storage:ConnectionString` |
 | Base de datos | `GestorGastosDbContext` | LocalDB (Windows) o SQL Server en Docker (`GESTORGASTOS_DB_HOST`) | Azure SQL Database free | `ConnectionStrings:GestorGastos` (vacía → local, `ConexionBaseDatos`) |
 | Autenticación | `Microsoft.Identity.Web` | **Real** (tenant del equipo), también en local | ídem | `AzureAd:*` |
 | Monitoreo | `ILogger` + App Insights | Consola | Application Insights | `APPLICATIONINSIGHTS_CONNECTION_STRING` |
@@ -352,10 +354,9 @@ Pendientes / mocks activos (agregar una fila por cada mock o integración a medi
 | Links de la navbar con hrefs fijos (`/Comprobantes`, `/Comprobantes/Cargar`, `/Admin/Comprobantes`): pasarlos a `asp-*` cuando existan P3 y P6 | `Web/Views/Shared/_Layout.cshtml` | — |
 | Listado de administración (P6) sin vista: `/Admin/Comprobantes` falla. El TODO no sigue el formato `TODO <Área>` de la sección 3 | `Web/Areas/Admin/Controllers/ComprobantesController.cs` | `TODO P6 (Federico)` |
 | P4 enlaza a pantallas de otros: Cancelar, breadcrumb y Eliminar van a `/Comprobantes` (P3) e "Ir al detalle" a `/Comprobantes/Detalle/{id}` (P5); dan 404 hasta que existan | `Web/Views/Comprobantes/*.cshtml`, `wwwroot/js/resultado-carga.js` | — |
-| `ComprobanteServicio` depende de `IAlmacenamientoArchivos`: al registrarlo en la Function, registrar también el almacenamiento | `Functions/Program.cs` | `TODO Extracción` |
 | Preview y descarga del archivo en el detalle administrativo | `Web/Areas/Admin/Views/Comprobantes/Detalle.cshtml` | `TODO Almacenamiento` |
 | `/api`: sin sesión o sin rol hoy redirige (a Entra ID / Acceso denegado); debería responder 401/403 `ProblemDetails`. Resolver con los eventos `OnRedirectToIdentityProvider` (OIDC) y `OnRedirectToAccessDenied` (cookie) al crear el primer controller API | `Web/Program.cs` | — |
-| `ExtraerComprobanteFunction` y registro de servicios compartidos | `Functions/Program.cs` | `TODO Extracción` |
+| Extracción sin probar en Azure: `ExtractorDocumentIntelligence` con el servicio real y disparo por Event Grid | `Servicios/ExtractorDocumentIntelligence.cs`, `SETUP.md` sección 5 | — |
 
 ## 7. Requisitos funcionales (resumen del enunciado)
 
@@ -608,7 +609,8 @@ Los usuarios reales vienen de Entra ID; estos sirven para crear las cuentas de p
   `Storage:ConnectionString` o `Storage:Contenedor` el constructor también falla, pero recién al resolver el servicio
   (cualquier request que use `ComprobanteServicio`), no al arrancar.
 - El Blob Trigger clásico puede demorar minutos: en Azure usar origen **Event Grid** (criterio "< 1 minuto").
-  En local, Azurite no emite eventos de Event Grid: usar el trigger clásico solo en local.
+  En local, Azurite no emite eventos de Event Grid: usar el trigger clásico solo en local. El origen depende de la configuración
+  de compilación (ver 6), así que a Azure hay que publicar en **Release**: Flex Consumption no admite el trigger clásico.
 - Document Intelligence F0: máximo 4 MB y solo las 2 primeras páginas de un PDF.
 - `IFormFile.ContentType` lo manda el navegador: validar por magic bytes (RN-03) y guardar el `ContentType` derivado.
 - El nombre original nunca va al blob (`{GUID}.{ext}`); se usa solo para mostrar y en `Content-Disposition` de la descarga.
@@ -616,6 +618,9 @@ Los usuarios reales vienen de Entra ID; estos sirven para crear las cuentas de p
   Si fuera al revés, la Function podría dispararse sin registro que encontrar.
 - Eliminar: primero blob (tolerar `404`), después registro; el historial cae por cascade.
 - La Function puede ejecutarse más de una vez para el mismo blob: chequear estado Procesando antes de procesar.
+  `ExtraccionServicio` lo chequea dos veces (antes y después de extraer). La primera lectura es `AsNoTracking` a propósito: con
+  tracking, EF devolvería la entidad vieja en la segunda y no vería un cambio hecho por la web mientras tanto.
+- Una moneda detectada fuera de RN-11 (p. ej. GBP) se guarda como `ARS`, igual que si no se detectara: el empleado la ve en P4 pero no se marca como dudosa.
 - El timeout de 5 min lo aplica la **web** al consultar el estado, no un job: comparar `FechaCarga` (UTC) con `DateTime.UtcNow`.
 - 404 vs 403: empleado sobre ajeno → 404; Empleado en `/api/admin` → 403; admin sobre su propio comprobante → 403.
   Usuario autenticado sin rol → redirigir a Acceso denegado (`AccessDeniedPath` de la cookie), no una 403 en blanco.
