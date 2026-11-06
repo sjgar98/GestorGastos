@@ -9,6 +9,10 @@ namespace GestorGastos.Servicios.Interfaces
         Task<Resultado<EstadoComprobanteDto>> EditarAsync(int id, string usuarioId, EditarComprobanteDto datos);
         Task<Resultado<bool>> EliminarAsync(int id, string usuarioId);
 
+        Task<Resultado<ComprobanteParaExtraccion>> ObtenerParaExtraccionAsync(string blobNombre);
+        Task<Resultado<bool>> RegistrarExtraccionAsync(string blobNombre, DatosExtraidos datos);
+        Task<Resultado<bool>> RegistrarFallaExtraccionAsync(string blobNombre, string mensajeError);
+
         Task<Resultado<ComprobanteAdminDetalleDto>> ObtenerAdminDetalleAsync(int id, string adminId);
         Task<Resultado<CambioEstadoRespuestaDto>> TomarEnRevisionAsync(int id, string adminId);
         Task<Resultado<CambioEstadoRespuestaDto>> AprobarAsync(int id, string adminId);

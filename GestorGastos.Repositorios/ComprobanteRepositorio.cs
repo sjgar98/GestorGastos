@@ -20,6 +20,20 @@ namespace GestorGastos.Repositorios
                 .FirstOrDefaultAsync(c => c.Id == id);
         }
 
+        public async Task<Comprobante?> ObtenerPorBlobNombreAsync(string blobNombre)
+        {
+            return await _contexto.Comprobantes
+                .Include(c => c.Historial)
+                .FirstOrDefaultAsync(c => c.BlobNombre == blobNombre);
+        }
+
+        public async Task<Comprobante?> ObtenerPorBlobNombreSinSeguimientoAsync(string blobNombre)
+        {
+            return await _contexto.Comprobantes
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.BlobNombre == blobNombre);
+        }
+
         public async Task AgregarAsync(Comprobante comprobante)
         {
             await _contexto.Comprobantes.AddAsync(comprobante);
