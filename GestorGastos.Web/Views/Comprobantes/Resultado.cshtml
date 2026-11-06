@@ -1,0 +1,198 @@
+@using Microsoft.AspNetCore.Mvc.ModelBinding
+@model ResultadoCargaViewModel
+@{
+    ViewData["Title"] = "Cargar comprobante";
+    var c = Model.Comprobante;
+    var estaEnError = c.Estado == EstadoComprobante.ErrorExtraccion;
+    var hayCamposConBajaConfianza = c.ConfianzaDescripcion < 0.8 || c.ConfianzaMonto < 0.8;
+    var hoyArgentina = DateOnly.FromDateTime(DateTime.UtcNow.ConvertirAArgentina()).ToString("yyyy-MM-dd");
+    var urlDetalle = $"/Comprobantes/Detalle/{c.Id}";
+    const string mensajeMonto = "Ingresá un monto mayor a 0, con hasta 2 decimales.";
+    string ClaseInvalida(string campo) =>
+        ViewData.ModelState.GetFieldValidationState(campo) == ModelValidationState.Invalid ? "is-invalid" : string.Empty;
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb small">
+        <li class="breadcrumb-item"><a href="/Comprobantes">Mis comprobantes</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Cargar comprobante</li>
+    </ol>
+</nav>
+<h1 class="h3 mb-3">Cargar comprobante</h1>
+
+<div class="row g-4">
+    <div class="col-lg-7">
+        @if (TempData["AvisoPaginas"] is string avisoPaginas)
+        {
+            <div class="alert alert-warning small">@avisoPaginas</div>
+        }
+
+        <div class="card" id="tarjetaResultado" data-id="@c.Id" data-estado="@c.Estado">
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <span class="fw-semibold">2. Resultado de la extracción</span>
+                @if (c.Estado != EstadoComprobante.Procesando)
+                {
+                    <partial name="_BadgeEstado" model="c.Estado" />
+                }
+            </div>
+
+            @if (c.Estado == EstadoComprobante.Procesando)
+            {
+                <div class="card-body">
+                    <div id="panelAnalizando" role="status">
+                        <div class="d-flex align-items-center gap-3 py-5 justify-content-center">
+                            <div class="spinner-border text-primary" aria-hidden="true"></div>
+                            <div class="text-truncate">
+                                <div class="fw-medium">Analizando comprobante…</div>
+                                <div class="small text-body-secondary text-truncate">@c.NombreArchivoOriginal</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="panelDemora" hidden>
+                        <div class="alert alert-info small mb-3">El análisis está tardando más de lo habitual. Podés seguir el estado desde Mis comprobantes.</div>
+                        <div class="d-flex flex-wrap gap-2">
+                            <a href="/Comprobantes" class="btn btn-primary">Ir a Mis comprobantes</a>
+                            <a href="@urlDetalle" class="btn btn-outline-secondary">Ir al detalle</a>
+                        </div>
+                    </div>
+                </div>
+            }
+            else if (c.Editable)
+            {
+                <form asp-action="Editar" asp-route-id="@c.Id" method="post" class="card-body" id="formResultado" novalidate>
+                    @if (estaEnError)
+                    {
+                        <div class="alert alert-danger small"><strong>No pudimos leer el comprobante.</strong> Completá descripción y monto para enviarlo a revisión.</div>
+                    }
+                    else if (hayCamposConBajaConfianza)
+                    {
+                        <div class="alert alert-success small">Listo. Revisá los datos: los campos marcados con <span class="badge text-bg-warning">Revisar</span> tienen baja confianza.</div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-success small">Listo. Revisá los datos extraídos y corregilos si hace falta.</div>
+                    }
+
+                    <div asp-validation-summary="ModelOnly" class="alert alert-danger small"></div>
+
+                    <div class="row g-3">
+                        <div class="col-sm-7">
+                            <label asp-for="Formulario.Comercio" class="form-label">Comercio</label>
+                            <input asp-for="Formulario.Comercio" class="form-control @ClaseInvalida("Formulario.Comercio")" maxlength="200">
+                            <span asp-validation-for="Formulario.Comercio" class="invalid-feedback"></span>
+                        </div>
+                        <div class="col-sm-5">
+                            <label asp-for="Formulario.FechaComprobante" class="form-label">Fecha del comprobante</label>
+                            <input asp-for="Formulario.FechaComprobante" type="date" max="@hoyArgentina"
+                                   class="form-control @ClaseInvalida("Formulario.FechaComprobante")"
+                                   data-val="true" data-val-fechanofutura="La fecha no puede ser futura." data-val-fechanofutura-max="@hoyArgentina"
+                                   data-msg-max="La fecha no puede ser futura.">
+                            <span asp-validation-for="Formulario.FechaComprobante" class="invalid-feedback"></span>
+                        </div>
+                        <div class="col-12">
+                            <label asp-for="Formulario.Descripcion" class="form-label">
+                                Descripción
+                                @if (c.ConfianzaDescripcion is < 0.8)
+                                {
+                                    <partial name="_BadgeRevisar" model="c.ConfianzaDescripcion.Value" />
+                                }
+                            </label>
+                            <textarea asp-for="Formulario.Descripcion" class="form-control @ClaseInvalida("Formulario.Descripcion")" rows="2" maxlength="500"></textarea>
+                            <span asp-validation-for="Formulario.Descripcion" class="invalid-feedback"></span>
+                        </div>
+                        <div class="col-sm-7">
+                            <label asp-for="Formulario.Monto" class="form-label">
+                                Monto total
+                                @if (c.ConfianzaMonto is < 0.8)
+                                {
+                                    <partial name="_BadgeRevisar" model="c.ConfianzaMonto.Value" />
+                                }
+                            </label>
+                            <input asp-for="Formulario.Monto" type="number" inputmode="decimal" step="0.01" min="0.01" max="99999999.99"
+                                   class="form-control @ClaseInvalida("Formulario.Monto")"
+                                   data-val-dosdecimales="@mensajeMonto" data-msg-step="@mensajeMonto" data-msg-min="@mensajeMonto" data-msg-max="@mensajeMonto">
+                            <span asp-validation-for="Formulario.Monto" class="invalid-feedback"></span>
+                        </div>
+                        <div class="col-sm-5">
+                            <label asp-for="Formulario.Moneda" class="form-label">Moneda</label>
+                            <select asp-for="Formulario.Moneda" class="form-select @ClaseInvalida("Formulario.Moneda")">
+                                @foreach (var moneda in Enum.GetValues<Moneda>())
+                                {
+                                    <option value="@moneda">@moneda</option>
+                                }
+                            </select>
+                            <span asp-validation-for="Formulario.Moneda" class="invalid-feedback"></span>
+                        </div>
+                        <div class="col-sm-7">
+                            <label asp-for="Formulario.Categoria" class="form-label">Categoría</label>
+                            <select asp-for="Formulario.Categoria" class="form-select @ClaseInvalida("Formulario.Categoria")">
+                                @foreach (var categoria in Enum.GetValues<Categoria>())
+                                {
+                                    <option value="@categoria">@categoria.Texto()</option>
+                                }
+                            </select>
+                            <span asp-validation-for="Formulario.Categoria" class="invalid-feedback"></span>
+                        </div>
+                    </div>
+                </form>
+                <div class="card-footer d-flex flex-wrap gap-2 justify-content-end">
+                    <button type="button" class="btn btn-outline-danger me-auto" data-bs-toggle="modal" data-bs-target="#modalEliminar">Eliminar</button>
+                    <a href="@urlDetalle" class="btn btn-outline-secondary">Ir al detalle</a>
+                    <button type="submit" form="formResultado" class="btn btn-primary">@(estaEnError ? "Guardar y enviar a revisión" : "Guardar cambios")</button>
+                </div>
+            }
+            else
+            {
+                <div class="card-body">
+                    <div class="alert alert-info small mb-3">Este comprobante está @c.EstadoTexto y ya no se puede editar.</div>
+                    <a href="@urlDetalle" class="btn btn-outline-secondary">Ir al detalle</a>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="col-lg-5">
+        <partial name="_QuePasaDespues" />
+    </div>
+</div>
+
+@if (c.Editable)
+{
+    <div class="modal fade" id="modalEliminar" tabindex="-1" aria-labelledby="modalEliminarTitulo" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title fs-5" id="modalEliminarTitulo">Eliminar comprobante</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-0">Se va a eliminar <strong>@c.NombreArchivoOriginal</strong> y su archivo. Esta acción no se puede deshacer.</p>
+                    <div class="alert alert-danger small mt-3 mb-0" id="errorEliminar" hidden></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-danger" id="btnConfirmarEliminar">Eliminar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="toastResultado" class="toast align-items-center text-bg-success border-0" role="status" aria-live="polite" aria-atomic="true"
+         data-mensaje="@(TempData["MensajeExito"] as string)">
+        <div class="d-flex">
+            <div class="toast-body" id="toastResultadoMensaje"></div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Cerrar"></button>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    @if (c.Editable)
+    {
+        <partial name="_ValidationScriptsPartial" />
+        <script src="~/js/validacion-bootstrap.js" asp-append-version="true"></script>
+    }
+    <script src="~/js/resultado-carga.js" asp-append-version="true"></script>
+}

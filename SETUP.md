@@ -57,7 +57,7 @@ dotnet user-secrets set "AzureAd:ClientSecret" "<Value del secreto>" --project G
   `dotnet user-secrets set "APPLICATIONINSIGHTS_CONNECTION_STRING" "<cadena>" --project GestorGastos.Web`
 - Function: `cp GestorGastos.Functions/local.settings.example.json GestorGastos.Functions/local.settings.json`
   y dejar `ConnectionStrings:GestorGastos` vacía (usa la misma base local que la web). `DocumentIntelligence__*` puede
-  quedar vacío hasta que esté implementada la extracción.
+  quedar vacío: la Function usa el extractor mock. Un archivo con `error` o `borroso` en el nombre simula una extracción fallida.
 
 **Prueba:** `dotnet run --project GestorGastos.Web --launch-profile https` y abrir `https://localhost:7282`.
 - `/` muestra la Bienvenida sin pedir login. **Iniciar sesión con Microsoft** lleva al login del tenant GestorGastos.
@@ -126,7 +126,7 @@ Repetir cada vez que se agregue una migración: en Azure la web no las aplica so
 
 - **Desplegar la web y la Function**: el App Service y la Function App están vacíos. A mano (VS Code,
   `dotnet publish`) o agregando CD al pipeline de GitHub Actions.
-- **Event Grid**, cuando exista `ExtraerComprobanteFunction`:
+- **Event Grid** (la Function hay que publicarla en **Release**: el build Debug usa el trigger clásico, que Flex Consumption no admite):
   1. En `func-gestorgastos-pw3`: **Functions → App keys → System keys**, copiar `blobs_extension`.
   2. En `stgestorgastospw3`: **Events → Event Subscription**, con:
      - Esquema: **Event Grid Schema**.

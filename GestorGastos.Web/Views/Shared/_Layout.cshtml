@@ -14,6 +14,8 @@
     @if (User.Identity?.IsAuthenticated == true)
     {
         var controladorActual = ViewContext.RouteData.Values["controller"]?.ToString();
+        var accionActual = ViewContext.RouteData.Values["action"]?.ToString();
+        var enCargar = controladorActual == "Comprobantes" && accionActual is "Cargar" or "Resultado" or "Editar";
         <nav class="navbar navbar-expand-md bg-body border-bottom">
             <div class="container">
                 <a class="navbar-brand fw-semibold" asp-area="" asp-controller="Home" asp-action="Index">Reembolsos</a>
@@ -28,7 +30,7 @@
                                 <a class="nav-link @(controladorActual == "Home" ? "active" : "")" asp-area="" asp-controller="Home" asp-action="Index">Dashboard</a>
                             </li>
                             <li class="nav-item"><a class="nav-link" href="/Comprobantes">Mis comprobantes</a></li>
-                            <li class="nav-item"><a class="nav-link" href="/Comprobantes/Cargar">Cargar</a></li>
+                            <li class="nav-item"><a class="nav-link @(enCargar ? "active" : "")" href="/Comprobantes/Cargar">Cargar</a></li>
                             @if (User.IsInRole(Roles.Administrador))
                             {
                                 <li class="nav-item"><a class="nav-link" href="/Admin/Comprobantes">Administración</a></li>

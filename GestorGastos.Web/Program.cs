@@ -17,6 +17,11 @@ builder.Services.AddDbContext<GestorGastosDbContext>(options =>
 
 builder.Services.AddScoped<IUsuarioRepositorio, UsuarioRepositorio>();
 builder.Services.AddScoped<IUsuarioServicio, UsuarioServicio>();
+builder.Services.AddScoped<IComprobanteRepositorio, ComprobanteRepositorio>();
+builder.Services.AddScoped<IComprobanteServicio, ComprobanteServicio>();
+builder.Services.AddSingleton<IAlmacenamientoArchivos>(_ => new AlmacenamientoArchivos(
+    builder.Configuration["Storage:ConnectionString"] ?? string.Empty,
+    builder.Configuration["Storage:Contenedor"] ?? string.Empty));
 
 builder.Services.AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
     .AddMicrosoftIdentityWebApp(
