@@ -1,4 +1,4 @@
-﻿namespace GestorGastos.DTOs.Helpers
+namespace GestorGastos.DTOs.Helpers
 {
     public static class FechaHelper
     {
@@ -10,6 +10,16 @@
             return TimeZoneInfo.ConvertTimeFromUtc(
                 DateTime.SpecifyKind(fechaUtc, DateTimeKind.Utc),
                 _zonaArgentina);
+        }
+
+        public static string FechaLocal(this DateTime fechaUtc)
+        {
+            return fechaUtc.ConvertirAArgentina().ToString("dd/MM/yyyy");
+        }
+
+        public static string FechaHoraLocal(this DateTime fechaUtc)
+        {
+            return fechaUtc.ConvertirAArgentina().ToString("dd/MM/yyyy HH:mm");
         }
     }
 }

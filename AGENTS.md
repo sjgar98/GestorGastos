@@ -140,7 +140,7 @@ GestorGastos.DTOs: enums + DTOs, referenciado por todos.  Application Insights: 
 
 | Proyecto | Contenido | Referencia a |
 |---|---|---|
-| `GestorGastos.DTOs` | DTOs de entrada/salida (API y formularios), `Enums/` (`EstadoComprobante`, `TipoDocumento`, `Categoria`, `Moneda`), `Validaciones/` (atributos custom: `FechaNoFutura`, `MaximoDosDecimales`) | — |
+| `GestorGastos.DTOs` | DTOs de entrada/salida (API y formularios), `Enums/` (`EstadoComprobante`, `TipoDocumento`, `Categoria`, `Moneda`), `Validaciones/` (atributos custom: `FechaNoFutura`, `MaximoDosDecimales`), `Helpers/` (`EtiquetasHelper`, `FechaHelper`) | — |
 | `GestorGastos.Entidades` | Entidades EF, `GestorGastosDbContext`, `Migrations/` | DTOs (enums) |
 | `GestorGastos.Repositorios` | `Interfaces/I*Repositorio` + implementación; **único** lugar con queries EF | Entidades |
 | `GestorGastos.Servicios` | Lógica de negocio compartida web + Function: `ComprobanteServicio` (máquina de estados, historial, RN), `UsuarioServicio`, `ValidadorArchivo` (magic bytes), abstracciones `IAlmacenamientoArchivos` e `IExtractorDocumentos` con sus implementaciones, mapeo entidad→DTO | Repositorios, Entidades, DTOs |
@@ -170,7 +170,8 @@ No hay proyecto de tests (ver 0).
   `AccessDeniedPath` = `/Cuenta/AccesoDenegado`). Excepciones: `HomeController.Index` (P1/P2, chequea el rol a mano con
   `User.TieneRol()`), `Cuenta/IniciarSesion` y `Cuenta/AccesoDenegado` son `[AllowAnonymous]`; `Cuenta/CerrarSesion` es
   `[Authorize]` (solo sesión, para que un usuario sin rol pueda salir). `[Authorize(Roles = Roles.Administrador)]`
-  (`Web/Helpers/Roles.cs`) en el área Admin y en `/api/admin/...`. Ocultar botones **no** reemplaza la validación del backend.
+  (`Web/Helpers/Roles.cs`, que también define `Roles.EmpleadoOAdmin` = `"Empleado,Administrador"`, hoy sin usos)
+  en el área Admin y en `/api/admin/...`. Ocultar botones **no** reemplaza la validación del backend.
 - Datos del usuario logueado en vistas y en el alta: extensiones de `Web/Helpers/ClaimsPrincipalHelper.cs`
   (`User.Nombre()`, `User.Email()`, `User.Rol()`, `User.TieneRol()`), importadas en `_ViewImports`.
 - Toda consulta de empleado filtra por `UsuarioId` del usuario logueado. Recurso ajeno → **404**.
@@ -209,10 +210,12 @@ No hay proyecto de tests (ver 0).
   Con `hidden` no se oculta un elemento que tiene `d-flex` (Bootstrap usa `!important`): poner `hidden` en un contenedor.
 - Propiedades numéricas/fecha obligatorias de DTOs de entrada: nullable + `[Required]` (`decimal?`, `DateOnly?`).
 - Enums: valores desde 1, guardados como **string** (`HasConversion<string>()`). Texto visible y clase
-  de badge por extensiones en `Web/Helpers/EtiquetasHelper.cs` (importado en `_ViewImports`):
-  `EstadoComprobante.Texto()` ("Pendiente de Revisión"), `EstadoComprobante.ClaseBadge()`,
-  `Categoria.Texto()` ("Viáticos"), `decimal?.Moneda(moneda)` ("$ 12.345,67" o "—"),
-  `DateTime.FechaLocal()` / `FechaHoraLocal()` ("28/10/2026 14:32").
+  de badge por extensiones en `GestorGastos.DTOs/Helpers/` (namespace `GestorGastos.DTOs.Helpers`, importado en los
+  `_ViewImports` de Views y del área Admin), compartidas por web, servicios y validaciones:
+  `EtiquetasHelper`: `EstadoComprobante.Texto()` ("Pendiente de Revisión"), `EstadoComprobante.ClaseBadge()`,
+  `Categoria.Texto()` ("Viáticos"), `TipoDocumento.Texto()`, `decimal?.Moneda(moneda)` ("$ 12.345,67" o "—");
+  `FechaHelper`: `DateTime.ConvertirAArgentina()`, `FechaLocal()` / `FechaHoraLocal()` ("28/10/2026 14:32").
+  No duplicarlas en `Web/Helpers` (ahí quedan solo los helpers que dependen de ASP.NET: claims, roles, `Resultado`).
 - Fechas: se guardan en **UTC** (`DateTime.UtcNow`, asignadas por el servidor) y se muestran en hora
   de Argentina (zona `America/Argentina/Buenos_Aires`, UTC−3) solo en los helpers de vista.
   Fechas sin hora (`FechaComprobante`, `FechaPago` del formulario) como `DateOnly`.
@@ -220,7 +223,10 @@ No hay proyecto de tests (ver 0).
 - Mapeo entidad→DTO: `private static XDto ADto(X entidad)` dentro del servicio.
 - Resultados de servicio: un único tipo (p. ej. `Resultado<T>` con `TipoError { NoEncontrado, Prohibido,
   Conflicto, Invalido }` + mensaje) que un helper del controller traduce a 404/403/409/400 `ProblemDetails`.
-  No lanzar excepciones para errores de negocio esperados.
+  No lanzar excepciones para errores de negocio esperados. Helpers en `Web/Helpers/`: en API,
+  `this.ComoProblema(resultado)` (`ResultadoHelper`, `ProblemDetails` 404/403/409/400); en MVC,
+  `this.ComoVista(resultado)` (`ResultadoMvcHelper`: `NotFound()` / `Forbid()` / `BadRequest()`; los errores
+  `Invalido`/`Conflicto` de un formulario se muestran con `ModelState.AddModelError` en vez de usarlo).
 - Repositorios: listados con `AsNoTracking()` y paginación en BD (`Skip/Take`, 10 por página);
   `ObtenerPorIdAsync` con tracking e `Include(Historial)` para modificar y `GuardarCambiosAsync()`.
 - Vistas: Bootstrap 5.3 tal como en el prototipo (navbar `navbar-expand-md`, `card`, `table table-hover align-middle`
@@ -297,11 +303,11 @@ Leyenda: ✅ hecho · 🟡 parcial/mock · ❌ no existe. Actualizar en cada PR.
 
 | # | Pantalla / recurso | MVC (acción) | API | Estado |
 |---|---|---|---|---|
-| — | Solución, proyectos y DI base | — | — | ✅ `GestorGastos.slnx` con los 6 proyectos; carpetas vacías (`Controllers/Api/`, `Areas/Admin/`, `Validaciones/`) con `.gitkeep`; DbContext, ProblemDetails y App Insights registrados en web y Function; `.vscode` (build + launch Web) |
+| — | Solución, proyectos y DI base | — | — | ✅ `GestorGastos.slnx` con los 6 proyectos; DbContext, ProblemDetails y App Insights registrados en web y Function; `.vscode` (build + launch Web) |
 | — | `compose.yaml` (SQL Server + Azurite), `.env.example`, `local.settings.example.json` | — | — | ✅ |
 | — | Modelo + migración inicial | — | — | ✅ `Usuario`, `Comprobante`, `HistorialEstado` + enums en DTOs; migración `Inicial` (la web aplica las migraciones al arrancar, en todos los entornos) |
 | — | Auth Entra ID (OIDC, App Roles, fallback policy) + alta/actualización de `Usuario` | — | — | ✅ `AddMicrosoftIdentityWebApp` con `OnTokenValidated` → `UsuarioServicio.RegistrarAccesoAsync` (`UsuarioRepositorio`), `AccessDeniedPath`, fallback policy con rol; login/logout en `CuentaController` |
-| — | Layout con navbar (Dashboard, Mis comprobantes, Cargar, Administración solo admin; usuario → rol, email, Cerrar sesión) | `_Layout.cshtml` | — | ✅ Navbar completa según rol (solo con sesión) + `@Html.AntiForgeryToken()` para los `fetch`. Los links a Mis comprobantes y Cargar dan 404 hasta que existan esas pantallas; Administración apunta a `/Admin/Comprobantes` |
+| — | Layout con navbar (Dashboard, Mis comprobantes, Cargar, Administración solo admin; usuario → rol, email, Cerrar sesión) | `_Layout.cshtml` | — | ✅ Navbar completa según rol (solo con sesión) + `@Html.AntiForgeryToken()` para los `fetch`. Cargar marca `active` en `Cargar`/`Resultado`/`Editar`. Mis comprobantes da 404 hasta que exista P3 y Administración falla hasta que exista la vista de P6 (ver 6) |
 | P1 | Bienvenida / Login (redirige a Dashboard si hay sesión) | `HomeController.Index` `[AllowAnonymous]` sin sesión → vista `Bienvenida` | — | ✅ Botón → `Cuenta/IniciarSesion` |
 | — | Acceso denegado (sin rol o Empleado en `/Admin`) | `CuentaController.AccesoDenegado` | — | ✅ Responde 403; Cerrar sesión solo si hay sesión |
 | P2 | Dashboard (abiertos + desglose + alerta de errores) | `HomeController.Index` con sesión (sin rol → Acceso denegado) | — | 🟡 Placeholder: solo "Hola, <nombre>" y un aviso de que no está disponible |
@@ -309,12 +315,13 @@ Leyenda: ✅ hecho · 🟡 parcial/mock · ❌ no existe. Actualizar en cada PR.
 | P4 | Cargar — etapa 1 (archivo, tipo, categoría, miniatura, Quitar) | `ComprobantesController.Cargar` GET/POST | — | ✅ `CargarComprobanteViewModel` + `Views/Comprobantes/Cargar.cshtml` + `wwwroot/js/cargar-comprobante.js` (valida extensión y 4 MB al elegir, miniatura o ícono PDF, aviso de PDF > 2 páginas, Quitar). Servidor: `ComprobanteServicio.CargarAsync` → `ValidadorArchivo` → registro en Procesando + historial → blob `{GUID}.{ext}` (si falla la subida borra el registro y muestra "No pudimos guardar el archivo…") |
 | P4 | Cargar — etapa 2 (polling 3 s / 2 min, resultado, edición, Revisar < 0,8) | `ComprobantesController.Resultado/{id}` + `Editar [POST]` | `GET api/comprobantes/{id}/estado` | ✅ `Views/Comprobantes/Resultado.cshtml` + `wwwroot/js/resultado-carga.js`: en Procesando consulta el estado cada 3 s y recarga la vista cuando cambia; a los 2 min muestra el aviso de demora. Formulario `EditarComprobanteDto` (prefijo `Formulario`) con badge Revisar (partial `_BadgeRevisar`), Eliminar con modal (`DELETE api/comprobantes/{id}`) y toast de éxito. `ComprobanteServicio.EditarAsync` sirve también para P5 (Error → Pendiente con historial, `EditadoManualmente` solo si cambió un dato extraído). `EstadoComprobanteDto` serializa los enums como texto (`"estado": "Procesando"`) |
 | P5 | Detalle (datos, preview SAS, descargar, editar, eliminar, historial) | `ComprobantesController.Detalle/{id}`, `Editar [POST]` | `GET api/comprobantes/{id}/archivo?descarga=` | ❌ `Editar [POST]` y `EditarAsync` ya existen (P4); hoy redirigen a `Resultado/{id}` |
-| P6 | Todos los comprobantes (filtros estado + empleado, orden, paginación, acciones por estado, modales) | `Admin/ComprobantesController.Index` | `POST api/admin/comprobantes/{id}/tomar\|aprobar\|rechazar\|pagar` | 🟡 API de acciones implementada; listado MVC todavía es placeholder |
+| P6 | Todos los comprobantes (filtros estado + empleado, orden, paginación, acciones por estado, modales) | `Admin/ComprobantesController.Index` | `POST api/admin/comprobantes/{id}/tomar\|aprobar\|rechazar\|pagar` | 🟡 API de acciones implementada (`Api/AdminComprobantesController` + `ComprobanteServicio.TomarEnRevisionAsync`/`AprobarAsync`/`RechazarAsync`/`MarcarPagadoAsync`). `Admin/ComprobantesController.Index` devuelve `View()` pero **no existe** `Areas/Admin/Views/Comprobantes/Index.cshtml`: hoy `/Admin/Comprobantes` lanza una excepción (vista no encontrada) |
 | P7 | Detalle administración (empleado nombre + email, acciones de estado, sin editar/eliminar) | `Admin/ComprobantesController.Detalle/{id}` | ídem P6 + `archivo` | 🟡 Vista y acción de detalle implementadas; falta preview/descarga y completar integración de acciones |
 | — | Timeout: Procesando > 5 min → ErrorExtraccion al consultar estado | — | dentro de `GET .../estado` | ✅ `ComprobanteServicio.ObtenerEstadoAsync` (lo usan la API y `Resultado/{id}`): pasa a ErrorExtraccion con "El análisis tardó demasiado…" e historial con `UsuarioId = null` |
 | — | Validación de archivo (extensión, magic bytes, 4 MB, aviso PDF > 2 páginas) | — | — | ✅ `Servicios/ValidadorArchivo` (estático): RN-01 a RN-04 con los mensajes del enunciado; RN-06 cuenta `/Type /Page` sin descomprimir el PDF (si las páginas están en object streams comprimidos no avisa). El cliente replica extensión, tamaño y conteo de páginas |
 | — | Function de extracción (receipt/invoice, idempotente, historial) | — | — | ❌ |
-| — | Vista de error genérica (sin detalles técnicos) | `HomeController.Error` | `ProblemDetails` | 🟡 Vista `Error` genérica + `UseExceptionHandler` fuera de Development + `AddProblemDetails`; falta el helper que traduce `Resultado<T>` a `ProblemDetails` |
+| — | Vista de error genérica (sin detalles técnicos) | `HomeController.Error` | `ProblemDetails` | ✅ Vista `Error` genérica + `UseExceptionHandler` fuera de Development + `AddProblemDetails`; `Resultado<T>` se traduce con `ComoProblema` (API) y `ComoVista` (MVC), ver 3 |
+| — | Almacenamiento de archivos (Blob Storage) | — | — | 🟡 `Servicios/AlmacenamientoArchivos` (singleton en `Web/Program.cs`): `SubirAsync` (crea el contenedor si no existe), `EliminarAsync` (`DeleteIfExistsAsync`), `GenerarUrlLecturaAsync` → `UrlArchivoDto` (SAS de lectura de 5 min sobre un blob; con `nombreDescarga` fija `Content-Disposition: attachment`). Carga y eliminación ya lo usan; falta el endpoint `GET api/comprobantes/{id}/archivo` (P5/P7), único consumidor de `GenerarUrlLecturaAsync`. No está registrado en la Function |
 | — | Application Insights + logs de 7.6 en web y Function | — | — | ❌ |
 | — | Despliegue (App Service, Function App, Azure SQL, Storage, Event Grid, DI F0) | — | — | ❌ |
 | — | README (diagrama, recursos, App Registration + App Roles, variables, correr local, desplegar) | — | — | ❌ |
@@ -330,7 +337,7 @@ elige por configuración en `Program.cs` (web y Function), nunca con `if` en la 
 
 | Dependencia | Abstracción | Local / mock | Azure | Cómo se elige |
 |---|---|---|---|---|
-| Blob Storage | `IAlmacenamientoArchivos` (`SubirAsync`, `EliminarAsync` tolerando inexistente, `GenerarUrlLecturaAsync(blob, nombreDescarga?, 5 min)`) | Azurite (mismo SDK; SAS funciona con la cuenta de desarrollo) | Azure Storage (opcional Managed Identity + User Delegation SAS) | `Storage:ConnectionString` |
+| Blob Storage | `IAlmacenamientoArchivos` (`SubirAsync`, `EliminarAsync` tolerando inexistente, `GenerarUrlLecturaAsync(blob, nombreDescarga?, 5 min)`) | Azurite (mismo SDK; SAS funciona con la cuenta de desarrollo) | Azure Storage con connection string que incluya la clave de la cuenta (la SAS se firma con ella). Managed Identity + User Delegation SAS requeriría cambiar `AlmacenamientoArchivos` | `Storage:ConnectionString` + `Storage:Contenedor` (vacías → excepción al resolver el servicio) |
 | Document Intelligence | `IExtractorDocumentos` (`ExtraerAsync(stream, TipoDocumento)` → comercio, fecha, ítems, monto, moneda, confianzas) | `ExtractorDocumentosMock`: determinístico; si el nombre del blob/archivo original contiene `error` o `borroso` falla con "No se detectó el monto total del comprobante."; si no, devuelve datos de ejemplo con `ConfianzaDescripcion` < 0,8 | `ExtractorDocumentIntelligence` con `prebuilt-receipt` / `prebuilt-invoice` | `DocumentIntelligence:Endpoint` vacío → mock |
 | Disparo de la Function | Blob Trigger | Azurite + `func start` (trigger clásico, polling) | Blob Trigger `Source = EventGrid` + suscripción Event Grid | Configuración del trigger / App Settings |
 | Base de datos | `GestorGastosDbContext` | LocalDB (Windows) o SQL Server en Docker (`GESTORGASTOS_DB_HOST`) | Azure SQL Database free | `ConnectionStrings:GestorGastos` (vacía → local, `ConexionBaseDatos`) |
@@ -342,50 +349,13 @@ Pendientes / mocks activos (agregar una fila por cada mock o integración a medi
 | Qué | Dónde | TODO |
 |---|---|---|
 | Dashboard (P2) placeholder (sin contadores ni alerta de errores) | `Web/Views/Home/Index.cshtml` | — |
-| Links de la navbar a pantallas que no existen todavía (hrefs fijos) | `Web/Views/Shared/_Layout.cshtml` | — |
+| Links de la navbar con hrefs fijos (`/Comprobantes`, `/Comprobantes/Cargar`, `/Admin/Comprobantes`): pasarlos a `asp-*` cuando existan P3 y P6 | `Web/Views/Shared/_Layout.cshtml` | — |
+| Listado de administración (P6) sin vista: `/Admin/Comprobantes` falla. El TODO no sigue el formato `TODO <Área>` de la sección 3 | `Web/Areas/Admin/Controllers/ComprobantesController.cs` | `TODO P6 (Federico)` |
 | P4 enlaza a pantallas de otros: Cancelar, breadcrumb y Eliminar van a `/Comprobantes` (P3) e "Ir al detalle" a `/Comprobantes/Detalle/{id}` (P5); dan 404 hasta que existan | `Web/Views/Comprobantes/*.cshtml`, `wwwroot/js/resultado-carga.js` | — |
 | `ComprobanteServicio` depende de `IAlmacenamientoArchivos`: al registrarlo en la Function, registrar también el almacenamiento | `Functions/Program.cs` | `TODO Extracción` |
 | Preview y descarga del archivo en el detalle administrativo | `Web/Areas/Admin/Views/Comprobantes/Detalle.cshtml` | `TODO Almacenamiento` |
 | `/api`: sin sesión o sin rol hoy redirige (a Entra ID / Acceso denegado); debería responder 401/403 `ProblemDetails`. Resolver con los eventos `OnRedirectToIdentityProvider` (OIDC) y `OnRedirectToAccessDenied` (cookie) al crear el primer controller API | `Web/Program.cs` | — |
 | `ExtraerComprobanteFunction` y registro de servicios compartidos | `Functions/Program.cs` | `TODO Extracción` |
-
-### Prueba manual temporal del detalle administrativo
-
-La ruta MVC `/Admin/Comprobantes/Detalle/{id}` y su vista ya existen, pero devuelve `404` si no
-hay un registro con ese `id` en la base de datos. Para probarla antes de implementar P4, se puede
-insertar temporalmente un comprobante directamente en SQL Server usando un `UsuarioId` existente:
-
-```sql
-DECLARE @UsuarioId nvarchar(36);
-
-SELECT TOP 1 @UsuarioId = Id
-FROM Usuarios
-ORDER BY UltimoAcceso DESC;
-
-IF @UsuarioId IS NULL
-    THROW 50000, 'No existe ningún usuario. Inicia sesión primero.', 1;
-
-INSERT INTO Comprobantes
-(
-    UsuarioId, NombreArchivoOriginal, BlobNombre, ContentType, TamanioBytes,
-    TipoDocumento, Categoria, Comercio, FechaComprobante, Descripcion, Monto,
-    Moneda, ConfianzaDescripcion, ConfianzaMonto, EditadoManualmente, Estado,
-    MensajeError, MotivoRechazo, FechaCarga, FechaPago
-)
-OUTPUT INSERTED.Id
-VALUES
-(
-    @UsuarioId, 'comprobante-prueba.pdf', 'prueba-detalle-001', 'application/pdf', 1024,
-    'Factura', 'Otros', 'Comercio de prueba', CAST(GETUTCDATE() AS date),
-    'Comprobante creado para probar la vista de detalle', 1500.00, 'ARS', 1.0, 1.0, 0,
-    'PendienteRevision', NULL, NULL, GETUTCDATE(), NULL
-);
-```
-
-Usar el `Id` devuelto en `https://localhost:7282/Admin/Comprobantes/Detalle/{id}` y eliminar el
-registro al terminar (`DELETE FROM Comprobantes WHERE Id = <id>;`). Este registro permite probar
-la vista, pero no crea un archivo real en Blob Storage; por eso la preview y la descarga seguirán
-pendientes hasta implementar `TODO Almacenamiento`.
 
 ## 7. Requisitos funcionales (resumen del enunciado)
 
@@ -633,6 +603,10 @@ Los usuarios reales vienen de Entra ID; estos sirven para crear las cuentas de p
 
 - **No usar Razor Pages** (ni `AddRazorPages`): login y logout los resuelve `CuentaController` (ver 0), por eso no se
   usa `Microsoft.Identity.Web.UI`.
+- `AlmacenamientoArchivos` firma la SAS con la clave de la cuenta (`CanGenerateSasUri`): con una connection string sin
+  `AccountKey` (o con Managed Identity) `GenerarUrlLecturaAsync` lanza `InvalidOperationException`. Sin
+  `Storage:ConnectionString` o `Storage:Contenedor` el constructor también falla, pero recién al resolver el servicio
+  (cualquier request que use `ComprobanteServicio`), no al arrancar.
 - El Blob Trigger clásico puede demorar minutos: en Azure usar origen **Event Grid** (criterio "< 1 minuto").
   En local, Azurite no emite eventos de Event Grid: usar el trigger clásico solo en local.
 - Document Intelligence F0: máximo 4 MB y solo las 2 primeras páginas de un PDF.
