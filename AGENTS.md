@@ -140,7 +140,7 @@ GestorGastos.DTOs: enums + DTOs, referenciado por todos.  Application Insights: 
 
 | Proyecto | Contenido | Referencia a |
 |---|---|---|
-| `GestorGastos.DTOs` | DTOs de entrada/salida (API y formularios), `Enums/` (`EstadoComprobante`, `TipoDocumento`, `Categoria`, `Moneda`), `Validaciones/` (atributos custom) | — |
+| `GestorGastos.DTOs` | DTOs de entrada/salida (API y formularios), `Enums/` (`EstadoComprobante`, `TipoDocumento`, `Categoria`, `Moneda`), `Validaciones/` (atributos custom: `FechaNoFutura`, `MaximoDosDecimales`) | — |
 | `GestorGastos.Entidades` | Entidades EF, `GestorGastosDbContext`, `Migrations/` | DTOs (enums) |
 | `GestorGastos.Repositorios` | `Interfaces/I*Repositorio` + implementación; **único** lugar con queries EF | Entidades |
 | `GestorGastos.Servicios` | Lógica de negocio compartida web + Function: `ComprobanteServicio` (máquina de estados, historial, RN), `UsuarioServicio`, `ValidadorArchivo` (magic bytes), abstracciones `IAlmacenamientoArchivos` e `IExtractorDocumentos` con sus implementaciones, mapeo entidad→DTO | Repositorios, Entidades, DTOs |
@@ -203,7 +203,10 @@ No hay proyecto de tests (ver 0).
 - Validaciones de entrada: Data Annotations en el DTO con `ErrorMessage` en español y voseo, usando
   los mensajes sugeridos del enunciado ("Seleccioná un archivo.", "El archivo supera los 4 MB.").
   Reglas que dependen de BD o del estado (dueño, transición) van en el servicio.
-  En el cliente: jQuery Validation Unobtrusive con los mismos atributos (+ adaptadores para los custom).
+  En el cliente: jQuery Validation Unobtrusive con los mismos atributos (+ adaptadores para los custom en
+  `wwwroot/js/validacion-bootstrap.js`: `fechanofutura`, `dosdecimales`, y marca `is-invalid` de Bootstrap). Los
+  atributos HTML `min`/`max`/`step` también los valida jQuery Validation en inglés: ponerles `data-msg-min`/`-max`/`-step`.
+  Con `hidden` no se oculta un elemento que tiene `d-flex` (Bootstrap usa `!important`): poner `hidden` en un contenedor.
 - Propiedades numéricas/fecha obligatorias de DTOs de entrada: nullable + `[Required]` (`decimal?`, `DateOnly?`).
 - Enums: valores desde 1, guardados como **string** (`HasConversion<string>()`). Texto visible y clase
   de badge por extensiones en `Web/Helpers/EtiquetasHelper.cs` (importado en `_ViewImports`):
@@ -302,14 +305,14 @@ Leyenda: ✅ hecho · 🟡 parcial/mock · ❌ no existe. Actualizar en cada PR.
 | P1 | Bienvenida / Login (redirige a Dashboard si hay sesión) | `HomeController.Index` `[AllowAnonymous]` sin sesión → vista `Bienvenida` | — | ✅ Botón → `Cuenta/IniciarSesion` |
 | — | Acceso denegado (sin rol o Empleado en `/Admin`) | `CuentaController.AccesoDenegado` | — | ✅ Responde 403; Cerrar sesión solo si hay sesión |
 | P2 | Dashboard (abiertos + desglose + alerta de errores) | `HomeController.Index` con sesión (sin rol → Acceso denegado) | — | 🟡 Placeholder: solo "Hola, <nombre>" y un aviso de que no está disponible |
-| P3 | Mis comprobantes (filtro estado, orden, paginación 10, eliminar con modal, polling de Procesando) | `ComprobantesController.Index` | `GET api/comprobantes/{id}/estado`, `DELETE api/comprobantes/{id}` | ❌ |
-| P4 | Cargar — etapa 1 (archivo, tipo, categoría, miniatura, Quitar) | `ComprobantesController.Cargar` GET/POST | — | ❌ |
-| P4 | Cargar — etapa 2 (polling 3 s / 2 min, resultado, edición, Revisar < 0,8) | `ComprobantesController.Resultado/{id}` + `Editar [POST]` | `GET api/comprobantes/{id}/estado` | ❌ |
-| P5 | Detalle (datos, preview SAS, descargar, editar, eliminar, historial) | `ComprobantesController.Detalle/{id}`, `Editar [POST]` | `GET api/comprobantes/{id}/archivo?descarga=` | ❌ |
+| P3 | Mis comprobantes (filtro estado, orden, paginación 10, eliminar con modal, polling de Procesando) | `ComprobantesController.Index` | `GET api/comprobantes/{id}/estado`, `DELETE api/comprobantes/{id}` | ❌ Listado MVC pendiente. Los dos endpoints de API ya existen (se hicieron con P4) y se pueden reusar tal cual |
+| P4 | Cargar — etapa 1 (archivo, tipo, categoría, miniatura, Quitar) | `ComprobantesController.Cargar` GET/POST | — | ✅ `CargarComprobanteViewModel` + `Views/Comprobantes/Cargar.cshtml` + `wwwroot/js/cargar-comprobante.js` (valida extensión y 4 MB al elegir, miniatura o ícono PDF, aviso de PDF > 2 páginas, Quitar). Servidor: `ComprobanteServicio.CargarAsync` → `ValidadorArchivo` → registro en Procesando + historial → blob `{GUID}.{ext}` (si falla la subida borra el registro y muestra "No pudimos guardar el archivo…") |
+| P4 | Cargar — etapa 2 (polling 3 s / 2 min, resultado, edición, Revisar < 0,8) | `ComprobantesController.Resultado/{id}` + `Editar [POST]` | `GET api/comprobantes/{id}/estado` | ✅ `Views/Comprobantes/Resultado.cshtml` + `wwwroot/js/resultado-carga.js`: en Procesando consulta el estado cada 3 s y recarga la vista cuando cambia; a los 2 min muestra el aviso de demora. Formulario `EditarComprobanteDto` (prefijo `Formulario`) con badge Revisar (partial `_BadgeRevisar`), Eliminar con modal (`DELETE api/comprobantes/{id}`) y toast de éxito. `ComprobanteServicio.EditarAsync` sirve también para P5 (Error → Pendiente con historial, `EditadoManualmente` solo si cambió un dato extraído). `EstadoComprobanteDto` serializa los enums como texto (`"estado": "Procesando"`) |
+| P5 | Detalle (datos, preview SAS, descargar, editar, eliminar, historial) | `ComprobantesController.Detalle/{id}`, `Editar [POST]` | `GET api/comprobantes/{id}/archivo?descarga=` | ❌ `Editar [POST]` y `EditarAsync` ya existen (P4); hoy redirigen a `Resultado/{id}` |
 | P6 | Todos los comprobantes (filtros estado + empleado, orden, paginación, acciones por estado, modales) | `Admin/ComprobantesController.Index` | `POST api/admin/comprobantes/{id}/tomar\|aprobar\|rechazar\|pagar` | 🟡 API de acciones implementada; listado MVC todavía es placeholder |
 | P7 | Detalle administración (empleado nombre + email, acciones de estado, sin editar/eliminar) | `Admin/ComprobantesController.Detalle/{id}` | ídem P6 + `archivo` | 🟡 Vista y acción de detalle implementadas; falta preview/descarga y completar integración de acciones |
-| — | Timeout: Procesando > 5 min → ErrorExtraccion al consultar estado | — | dentro de `GET .../estado` | ❌ |
-| — | Validación de archivo (extensión, magic bytes, 4 MB, aviso PDF > 2 páginas) | — | — | ❌ |
+| — | Timeout: Procesando > 5 min → ErrorExtraccion al consultar estado | — | dentro de `GET .../estado` | ✅ `ComprobanteServicio.ObtenerEstadoAsync` (lo usan la API y `Resultado/{id}`): pasa a ErrorExtraccion con "El análisis tardó demasiado…" e historial con `UsuarioId = null` |
+| — | Validación de archivo (extensión, magic bytes, 4 MB, aviso PDF > 2 páginas) | — | — | ✅ `Servicios/ValidadorArchivo` (estático): RN-01 a RN-04 con los mensajes del enunciado; RN-06 cuenta `/Type /Page` sin descomprimir el PDF (si las páginas están en object streams comprimidos no avisa). El cliente replica extensión, tamaño y conteo de páginas |
 | — | Function de extracción (receipt/invoice, idempotente, historial) | — | — | ❌ |
 | — | Vista de error genérica (sin detalles técnicos) | `HomeController.Error` | `ProblemDetails` | 🟡 Vista `Error` genérica + `UseExceptionHandler` fuera de Development + `AddProblemDetails`; falta el helper que traduce `Resultado<T>` a `ProblemDetails` |
 | — | Application Insights + logs de 7.6 en web y Function | — | — | ❌ |
@@ -340,7 +343,8 @@ Pendientes / mocks activos (agregar una fila por cada mock o integración a medi
 |---|---|---|
 | Dashboard (P2) placeholder (sin contadores ni alerta de errores) | `Web/Views/Home/Index.cshtml` | — |
 | Links de la navbar a pantallas que no existen todavía (hrefs fijos) | `Web/Views/Shared/_Layout.cshtml` | — |
-| Carga real de comprobantes (formulario, `IFormFile`, Blob y creación del registro) | `Web/Controllers/ComprobantesController.cs`, `Web/Controllers/Api/ComprobantesController.cs` | `TODO Carga` |
+| P4 enlaza a pantallas de otros: Cancelar, breadcrumb y Eliminar van a `/Comprobantes` (P3) e "Ir al detalle" a `/Comprobantes/Detalle/{id}` (P5); dan 404 hasta que existan | `Web/Views/Comprobantes/*.cshtml`, `wwwroot/js/resultado-carga.js` | — |
+| `ComprobanteServicio` depende de `IAlmacenamientoArchivos`: al registrarlo en la Function, registrar también el almacenamiento | `Functions/Program.cs` | `TODO Extracción` |
 | Preview y descarga del archivo en el detalle administrativo | `Web/Areas/Admin/Views/Comprobantes/Detalle.cshtml` | `TODO Almacenamiento` |
 | `/api`: sin sesión o sin rol hoy redirige (a Entra ID / Acceso denegado); debería responder 401/403 `ProblemDetails`. Resolver con los eventos `OnRedirectToIdentityProvider` (OIDC) y `OnRedirectToAccessDenied` (cookie) al crear el primer controller API | `Web/Program.cs` | — |
 | `ExtraerComprobanteFunction` y registro de servicios compartidos | `Functions/Program.cs` | `TODO Extracción` |
