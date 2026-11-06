@@ -1,3 +1,5 @@
+using GestorGastos.DTOs.Enums;
+
 namespace GestorGastos.DTOs
 {
     public class ComprobanteAdminListadoDto
@@ -10,6 +12,6 @@ namespace GestorGastos.DTOs
         public DateTime FechaCarga { get; set; }
         public decimal? Monto { get; set; }
         public string? Moneda { get; set; }
-        public string Estado { get; set; } = string.Empty;
+        public EstadoComprobante Estado { get; set; }
     }
 }

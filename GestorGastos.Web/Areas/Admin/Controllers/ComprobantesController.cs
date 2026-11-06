@@ -2,19 +2,14 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using GestorGastos.DTOs;
 using GestorGastos.Servicios.Interfaces;
-
-
-using GestorGastos.Servicios.Interfaces;
 using GestorGastos.Web.Helpers;
 using GestorGastos.Web.Models;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Identity.Web;
 
 namespace GestorGastos.Web.Areas.Admin.Controllers
 {
     [Area("Admin")]
-    [Authorize(Roles = "Administrador")]
+    [Authorize(Roles = Roles.Administrador)]
     public class ComprobantesController : Controller
     {
         private readonly IComprobanteServicio _comprobanteServicio;
@@ -26,6 +21,7 @@ namespace GestorGastos.Web.Areas.Admin.Controllers
             _usuarioServicio = usuarioServicio;
         }
 
+        // GET /Admin/Comprobantes (P6)
         [HttpGet]
         public async Task<IActionResult> Index([FromQuery] FiltroAdminComprobantesDto filtro)
         {
@@ -39,40 +35,8 @@ namespace GestorGastos.Web.Areas.Admin.Controllers
             return View(resultado);
         }
 
+        // GET /Admin/Comprobantes/Detalle/{id} (P7)
         [HttpGet]
-        
-        public async Task<IActionResult> Detalle(int id)
-        {
-            // El servicio se encarga de buscar la lógica y retornar directamente el DTO que espera la vista
-            var dto = await _comprobanteServicio.ObtenerDetalleAdminAsync(id);
-
-            if (dto == null)
-            {
-                return NotFound();
-            }
-
-            return View(dto);
-        }
-    }
-}
-    [Authorize(Roles = Roles.Administrador)]
-    public class ComprobantesController : Controller
-    {
-        private readonly IComprobanteServicio _comprobanteServicio;
-
-        public ComprobantesController(IComprobanteServicio comprobanteServicio)
-        {
-            _comprobanteServicio = comprobanteServicio;
-        }
-
-        // GET /Admin/Comprobantes
-        // TODO P6 (Federico): implementar el listado de todos los comprobantes
-        public IActionResult Index()
-        {
-            return View();
-        }
-
-        // GET /Admin/Comprobantes/Detalle/{id}
         public async Task<IActionResult> Detalle(int id)
         {
             var adminId = User.GetObjectId();
@@ -90,3 +54,4 @@ namespace GestorGastos.Web.Areas.Admin.Controllers
             return View(vm);
         }
     }
+}
