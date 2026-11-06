@@ -14,9 +14,9 @@ namespace GestorGastos.Repositorios
     {
         private readonly GestorGastosDbContext _context;
 
-        public ComprobanteRepositorio(GestorGastosDbContext context)
+         public ComprobanteRepositorio(GestorGastosDbContext contexto)
         {
-            _context = context;
+            _context = contexto;
         }
 
         public async Task<(List<Comprobante> Elementos, int Total)> ListarAdminAsync(FiltroAdminComprobantesDto filtro, int tamanoPagina)
@@ -81,12 +81,10 @@ namespace GestorGastos.Repositorios
                 .Include(x => x.Historial)
                     .ThenInclude(h => h.Usuario)
                 .FirstOrDefaultAsync(x => x.Id == id);
+        }
         private readonly GestorGastosDbContext _contexto;
 
-        public ComprobanteRepositorio(GestorGastosDbContext contexto)
-        {
-            _contexto = contexto;
-        }
+   
 
         public async Task<Comprobante?> ObtenerPorIdAsync(int id)
         {

@@ -1,24 +1,38 @@
 using GestorGastos.DTOs;
 using GestorGastos.DTOs.Admin;
-using GestorGastos.Repositorios.Interfaces;
-using GestorGastos.Servicios.Interfaces;
 using GestorGastos.DTOs.Enums;
+using GestorGastos.DTOs.Helpers;
 using GestorGastos.Entidades;
 using GestorGastos.Repositorios.Interfaces;
 using GestorGastos.Servicios.Interfaces;
 using Microsoft.Extensions.Logging;
-using GestorGastos.DTOs.Helpers;
 
 namespace GestorGastos.Servicios
 {
     public class ComprobanteServicio : IComprobanteServicio
     {
         private readonly IComprobanteRepositorio _comprobanteRepositorio;
+        private readonly IAlmacenamientoArchivos _almacenamientoArchivos;
+        private readonly ILogger<ComprobanteServicio> _logger;
         private const int TamanoPaginaDefault = 10;
+        private static readonly TimeSpan TiempoMaximoProcesando = TimeSpan.FromMinutes(5);
+        private const string MensajeTiempoAgotado = "El análisis tardó demasiado. Completá los datos manualmente.";
+        private const string MensajeNoEncontrado = "El comprobante no existe.";
+        private const string MensajeYaProcesado = "El comprobante ya no está en Procesando.";
+        private const string MensajeSinMonto = "No se detectó el monto total del comprobante.";
+        private const string MensajeSinDescripcion = "No se detectó la descripción del comprobante.";
+        private const decimal MontoMaximo = 99_999_999.99m;
+        private const int LargoMaximoComercio = 200;
+        private const int LargoMaximoTexto = 500;
 
-        public ComprobanteServicio(IComprobanteRepositorio comprobanteRepositorio)
+        public ComprobanteServicio(
+            IComprobanteRepositorio comprobanteRepositorio,
+            IAlmacenamientoArchivos almacenamientoArchivos,
+            ILogger<ComprobanteServicio> logger)
         {
             _comprobanteRepositorio = comprobanteRepositorio;
+            _almacenamientoArchivos = almacenamientoArchivos;
+            _logger = logger;
         }
 
         public async Task<PaginadoDto<ComprobanteAdminListadoDto>> ListarAdminAsync(FiltroAdminComprobantesDto filtro)
@@ -47,43 +61,6 @@ namespace GestorGastos.Servicios
                 PaginaActual = filtro.Pagina,
                 TamanoPagina = TamanoPaginaDefault
             };
-        }
-
-        public async Task<ComprobanteAdminDetalleDto?> ObtenerDetalleAdminAsync(int id)
-        {
-            // Usamos el repositorio en lugar de _context directamente
-            var c = await _comprobanteRepositorio.ObtenerConDetalleAsync(id);
-
-            if (c == null) return null;
-
-            return new ComprobanteAdminDetalleDto
-            {
-                Id = c.Id,
-                UsuarioId = c.UsuarioId,
-                NombreEmpleado = c.Usuario?.Nombre ?? "Desconocido",
-                EmailEmpleado = c.Usuario?.Email ?? "",
-        private static readonly TimeSpan TiempoMaximoProcesando = TimeSpan.FromMinutes(5);
-        private const string MensajeTiempoAgotado = "El análisis tardó demasiado. Completá los datos manualmente.";
-        private const string MensajeNoEncontrado = "El comprobante no existe.";
-        private const string MensajeYaProcesado = "El comprobante ya no está en Procesando.";
-        private const string MensajeSinMonto = "No se detectó el monto total del comprobante.";
-        private const string MensajeSinDescripcion = "No se detectó la descripción del comprobante.";
-        private const decimal MontoMaximo = 99_999_999.99m;
-        private const int LargoMaximoComercio = 200;
-        private const int LargoMaximoTexto = 500;
-
-        private readonly IComprobanteRepositorio _comprobanteRepositorio;
-        private readonly IAlmacenamientoArchivos _almacenamientoArchivos;
-        private readonly ILogger<ComprobanteServicio> _logger;
-
-        public ComprobanteServicio(
-            IComprobanteRepositorio comprobanteRepositorio,
-            IAlmacenamientoArchivos almacenamientoArchivos,
-            ILogger<ComprobanteServicio> logger)
-        {
-            _comprobanteRepositorio = comprobanteRepositorio;
-            _almacenamientoArchivos = almacenamientoArchivos;
-            _logger = logger;
         }
 
         public async Task<Resultado<CargaRealizadaDto>> CargarAsync(string usuarioId, CargaComprobanteDto datos, Stream contenido)
@@ -547,6 +524,11 @@ namespace GestorGastos.Servicios
                 Estado = c.Estado,
                 EstadoTexto = c.Estado.Texto()
             };
+        }
+
+        public Task<ComprobanteAdminDetalleDto?> ObtenerDetalleAdminAsync(int id)
+        {
+            throw new NotImplementedException();
         }
     }
 }

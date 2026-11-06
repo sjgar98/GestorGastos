@@ -8,8 +8,7 @@ namespace GestorGastos.Servicios.Interfaces
         // ... otros métodos existentes ...
         Task<PaginadoDto<ComprobanteAdminListadoDto>> ListarAdminAsync(FiltroAdminComprobantesDto filtro);
         Task<ComprobanteAdminDetalleDto?> ObtenerDetalleAdminAsync(int id);
-    }
-}
+
         Task<Resultado<CargaRealizadaDto>> CargarAsync(string usuarioId, CargaComprobanteDto datos, Stream contenido);
         Task<Resultado<EstadoComprobanteDto>> ObtenerEstadoAsync(int id, string usuarioId);
         Task<Resultado<EstadoComprobanteDto>> EditarAsync(int id, string usuarioId, EditarComprobanteDto datos);
@@ -26,3 +25,4 @@ namespace GestorGastos.Servicios.Interfaces
         Task<Resultado<CambioEstadoRespuestaDto>> MarcarPagadoAsync(int id, string adminId, DateOnly fechaPago);
     }
 }
+ 
