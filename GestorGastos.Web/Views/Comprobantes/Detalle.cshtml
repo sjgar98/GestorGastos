@@ -101,7 +101,10 @@
             {
                 <div class="card-footer">
                     <button type="button" id="boton-editar" class="btn btn-primary">Editar datos</button>
-                    <button type="button" id="boton-eliminar" class="btn btn-outline-danger">Eliminar</button>
+                    <button type="button" id="boton-eliminar" class="btn btn-outline-danger"
+                            data-bs-toggle="modal" data-bs-target="#modal-eliminar">
+                        Eliminar
+                    </button>
                 </div>
             }
         </div>
@@ -135,4 +138,28 @@
             </ul>
         </div>
     </div>
+    @if (puedeModificar)
+    {
+        <div class="modal fade" id="modal-eliminar" tabindex="-1" aria-labelledby="titulo-modal-eliminar" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2 class="modal-title fs-5" id="titulo-modal-eliminar">Eliminar comprobante</h2>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="error-eliminar" class="alert alert-danger d-none" role="alert"></div>
+                        <p class="mb-0">Se va a eliminar <strong>@Model.NombreArchivoOriginal</strong> y su archivo. Esta acción no se puede deshacer.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" id="confirmar-eliminar" class="btn btn-danger">Eliminar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
 </div>
+@section Scripts {
+    <script src="~/js/detalle.js" asp-append-version="true"></script>
+}
