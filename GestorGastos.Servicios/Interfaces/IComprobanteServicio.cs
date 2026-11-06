@@ -4,8 +4,10 @@ namespace GestorGastos.Servicios.Interfaces
 {
     public interface IComprobanteServicio
     {
-        // TODO Almacenamiento: CargarAsync depende de IAlmacenamientoArchivos (pendiente)
-        // TODO Extracción: los métodos de P4 (CargarAsync, ObtenerEstadoAsync) van acá
+        Task<Resultado<CargaRealizadaDto>> CargarAsync(string usuarioId, CargaComprobanteDto datos, Stream contenido);
+        Task<Resultado<EstadoComprobanteDto>> ObtenerEstadoAsync(int id, string usuarioId);
+        Task<Resultado<EstadoComprobanteDto>> EditarAsync(int id, string usuarioId, EditarComprobanteDto datos);
+        Task<Resultado<bool>> EliminarAsync(int id, string usuarioId);
 
         Task<Resultado<ComprobanteDetalleDto>> ObtenerDetalleAsync(int comprobanteId, string usuarioId);
         Task<Resultado<ComprobanteAdminDetalleDto>> ObtenerAdminDetalleAsync(int id, string adminId);

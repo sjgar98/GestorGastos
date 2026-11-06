@@ -10,15 +10,156 @@ namespace GestorGastos.Servicios
 {
     public class ComprobanteServicio : IComprobanteServicio
     {
+        private static readonly TimeSpan TiempoMaximoProcesando = TimeSpan.FromMinutes(5);
+        private const string MensajeTiempoAgotado = "El análisis tardó demasiado. Completá los datos manualmente.";
+        private const string MensajeNoEncontrado = "El comprobante no existe.";
+
         private readonly IComprobanteRepositorio _comprobanteRepositorio;
+        private readonly IAlmacenamientoArchivos _almacenamientoArchivos;
         private readonly ILogger<ComprobanteServicio> _logger;
 
         public ComprobanteServicio(
             IComprobanteRepositorio comprobanteRepositorio,
+            IAlmacenamientoArchivos almacenamientoArchivos,
             ILogger<ComprobanteServicio> logger)
         {
             _comprobanteRepositorio = comprobanteRepositorio;
+            _almacenamientoArchivos = almacenamientoArchivos;
             _logger = logger;
+        }
+
+        public async Task<Resultado<CargaRealizadaDto>> CargarAsync(string usuarioId, CargaComprobanteDto datos, Stream contenido)
+        {
+            using var memoria = new MemoryStream();
+            await contenido.CopyToAsync(memoria);
+            var bytes = memoria.ToArray();
+
+            var validacion = ValidadorArchivo.Validar(datos.NombreArchivo, bytes);
+            if (!validacion.Exitoso)
+                return Resultado<CargaRealizadaDto>.Fallo(validacion.Error!.Value, validacion.Mensaje!);
+
+            var archivo = validacion.Valor!;
+            var ahora = DateTime.UtcNow;
+            var comprobante = new Comprobante
+            {
+                UsuarioId = usuarioId,
+                NombreArchivoOriginal = AcortarNombre(Path.GetFileName(datos.NombreArchivo)),
+                BlobNombre = $"{Guid.NewGuid()}{archivo.Extension}",
+                ContentType = archivo.ContentType,
+                TamanioBytes = bytes.Length,
+                TipoDocumento = datos.TipoDocumento,
+                Categoria = datos.Categoria,
+                Estado = EstadoComprobante.Procesando,
+                FechaCarga = ahora
+            };
+            comprobante.Historial.Add(new HistorialEstado
+            {
+                EstadoAnterior = null,
+                EstadoNuevo = EstadoComprobante.Procesando,
+                UsuarioId = usuarioId,
+                Fecha = ahora
+            });
+
+            await _comprobanteRepositorio.AgregarAsync(comprobante);
+            await _comprobanteRepositorio.GuardarCambiosAsync();
+
+            try
+            {
+                using var contenidoValidado = new MemoryStream(bytes);
+                await _almacenamientoArchivos.SubirAsync(comprobante.BlobNombre, contenidoValidado, archivo.ContentType);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "No se pudo subir el archivo del comprobante {ComprobanteId} ({BlobNombre}); se borra el registro",
+                    comprobante.Id, comprobante.BlobNombre);
+                _comprobanteRepositorio.Eliminar(comprobante);
+                await _comprobanteRepositorio.GuardarCambiosAsync();
+                return Resultado<CargaRealizadaDto>.Fallo(TipoError.Invalido, "No pudimos guardar el archivo. Intentá de nuevo en unos minutos.");
+            }
+
+            _logger.LogInformation("Comprobante {ComprobanteId} cargado por {UsuarioId}: {NombreArchivo} ({TamanioBytes} bytes, {TipoDocumento}) en {BlobNombre}",
+                comprobante.Id, usuarioId, comprobante.NombreArchivoOriginal, comprobante.TamanioBytes, comprobante.TipoDocumento, comprobante.BlobNombre);
+
+            return Resultado<CargaRealizadaDto>.Exito(new CargaRealizadaDto
+            {
+                Id = comprobante.Id,
+                SoloSeAnalizanDosPaginas = archivo.CantidadPaginas > ValidadorArchivo.PaginasAnalizadas
+            });
+        }
+
+        public async Task<Resultado<EstadoComprobanteDto>> ObtenerEstadoAsync(int id, string usuarioId)
+        {
+            var comprobante = await _comprobanteRepositorio.ObtenerPorIdAsync(id);
+            if (comprobante is null || comprobante.UsuarioId != usuarioId)
+                return Resultado<EstadoComprobanteDto>.Fallo(TipoError.NoEncontrado, MensajeNoEncontrado);
+
+            if (comprobante.Estado == EstadoComprobante.Procesando
+                && DateTime.UtcNow - comprobante.FechaCarga > TiempoMaximoProcesando)
+            {
+                comprobante.MensajeError = MensajeTiempoAgotado;
+                RegistrarCambioEstado(comprobante, EstadoComprobante.ErrorExtraccion, usuarioId: null, MensajeTiempoAgotado);
+                await _comprobanteRepositorio.GuardarCambiosAsync();
+            }
+
+            return Resultado<EstadoComprobanteDto>.Exito(AEstadoDto(comprobante));
+        }
+
+        public async Task<Resultado<EstadoComprobanteDto>> EditarAsync(int id, string usuarioId, EditarComprobanteDto datos)
+        {
+            var comprobante = await _comprobanteRepositorio.ObtenerPorIdAsync(id);
+            if (comprobante is null || comprobante.UsuarioId != usuarioId)
+                return Resultado<EstadoComprobanteDto>.Fallo(TipoError.NoEncontrado, MensajeNoEncontrado);
+
+            if (!EsEditablePorElDuenio(comprobante.Estado))
+                return Resultado<EstadoComprobanteDto>.Fallo(TipoError.Conflicto,
+                    "El comprobante ya no se puede editar: solo se editan los que están Pendientes de Revisión o con Error de extracción.");
+
+            var comercio = string.IsNullOrWhiteSpace(datos.Comercio) ? null : datos.Comercio.Trim();
+            var descripcion = datos.Descripcion!.Trim();
+
+            var cambioAlgunDatoExtraido = comprobante.Comercio != comercio
+                || comprobante.FechaComprobante != datos.FechaComprobante
+                || comprobante.Descripcion != descripcion
+                || comprobante.Monto != datos.Monto
+                || comprobante.Moneda != datos.Moneda;
+
+            comprobante.Comercio = comercio;
+            comprobante.FechaComprobante = datos.FechaComprobante;
+            comprobante.Descripcion = descripcion;
+            comprobante.Monto = datos.Monto;
+            comprobante.Moneda = datos.Moneda;
+            comprobante.Categoria = datos.Categoria!.Value;
+
+            if (cambioAlgunDatoExtraido)
+                comprobante.EditadoManualmente = true;
+
+            if (comprobante.Estado == EstadoComprobante.ErrorExtraccion)
+            {
+                comprobante.MensajeError = null;
+                RegistrarCambioEstado(comprobante, EstadoComprobante.PendienteRevision, usuarioId, "Datos completados manualmente.");
+            }
+
+            await _comprobanteRepositorio.GuardarCambiosAsync();
+            return Resultado<EstadoComprobanteDto>.Exito(AEstadoDto(comprobante));
+        }
+
+        public async Task<Resultado<bool>> EliminarAsync(int id, string usuarioId)
+        {
+            var comprobante = await _comprobanteRepositorio.ObtenerPorIdAsync(id);
+            if (comprobante is null || comprobante.UsuarioId != usuarioId)
+                return Resultado<bool>.Fallo(TipoError.NoEncontrado, MensajeNoEncontrado);
+
+            if (!EsEditablePorElDuenio(comprobante.Estado))
+                return Resultado<bool>.Fallo(TipoError.Conflicto,
+                    "El comprobante ya no se puede eliminar: solo se eliminan los que están Pendientes de Revisión o con Error de extracción.");
+
+            await _almacenamientoArchivos.EliminarAsync(comprobante.BlobNombre);
+            _comprobanteRepositorio.Eliminar(comprobante);
+            await _comprobanteRepositorio.GuardarCambiosAsync();
+
+            _logger.LogInformation("Comprobante {ComprobanteId} eliminado por {UsuarioId} (blob {BlobNombre})",
+                comprobante.Id, usuarioId, comprobante.BlobNombre);
+            return Resultado<bool>.Exito(true);
         }
 
         public async Task<Resultado<ComprobanteAdminDetalleDto>> ObtenerAdminDetalleAsync(int id, string adminId)
@@ -109,6 +250,61 @@ namespace GestorGastos.Servicios
         }
 
         // ── Helpers privados ──────────────────────────────────────────────────────
+
+        private static bool EsEditablePorElDuenio(EstadoComprobante estado)
+        {
+            return estado is EstadoComprobante.PendienteRevision or EstadoComprobante.ErrorExtraccion;
+        }
+
+        private static string AcortarNombre(string nombreArchivo)
+        {
+            const int largoMaximo = 255;
+            if (nombreArchivo.Length <= largoMaximo)
+                return nombreArchivo;
+
+            var extension = Path.GetExtension(nombreArchivo);
+            return nombreArchivo[..(largoMaximo - extension.Length)] + extension;
+        }
+
+        private void RegistrarCambioEstado(Comprobante comprobante, EstadoComprobante estadoNuevo, string? usuarioId, string? observacion)
+        {
+            var estadoAnterior = comprobante.Estado;
+            comprobante.Estado = estadoNuevo;
+            comprobante.Historial.Add(new HistorialEstado
+            {
+                ComprobanteId = comprobante.Id,
+                EstadoAnterior = estadoAnterior,
+                EstadoNuevo = estadoNuevo,
+                UsuarioId = usuarioId,
+                Fecha = DateTime.UtcNow,
+                Observacion = observacion
+            });
+
+            _logger.LogInformation("Comprobante {ComprobanteId} pasó de {Anterior} a {Nuevo}",
+                comprobante.Id, estadoAnterior, estadoNuevo);
+        }
+
+        private static EstadoComprobanteDto AEstadoDto(Comprobante c)
+        {
+            return new EstadoComprobanteDto
+            {
+                Id = c.Id,
+                NombreArchivoOriginal = c.NombreArchivoOriginal,
+                Estado = c.Estado,
+                EstadoTexto = c.Estado.Texto(),
+                TipoDocumento = c.TipoDocumento,
+                Categoria = c.Categoria,
+                Comercio = c.Comercio,
+                FechaComprobante = c.FechaComprobante,
+                Descripcion = c.Descripcion,
+                Monto = c.Monto,
+                Moneda = c.Moneda,
+                ConfianzaDescripcion = c.ConfianzaDescripcion,
+                ConfianzaMonto = c.ConfianzaMonto,
+                MensajeError = c.MensajeError,
+                Editable = EsEditablePorElDuenio(c.Estado)
+            };
+        }
 
         private async Task<Resultado<CambioEstadoRespuestaDto>> CambiarEstadoAsync(
             int id,

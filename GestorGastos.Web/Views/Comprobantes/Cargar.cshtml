@@ -1,0 +1,94 @@
+@using Microsoft.AspNetCore.Mvc.ModelBinding
+@model CargarComprobanteViewModel
+@{
+    ViewData["Title"] = "Cargar comprobante";
+    var errorArchivo = ViewData.ModelState[nameof(CargarComprobanteViewModel.Archivo)]?.Errors.FirstOrDefault()?.ErrorMessage;
+    string ClaseInvalida(string campo) =>
+        ViewData.ModelState.GetFieldValidationState(campo) == ModelValidationState.Invalid ? "is-invalid" : string.Empty;
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb small">
+        <li class="breadcrumb-item"><a href="/Comprobantes">Mis comprobantes</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Cargar comprobante</li>
+    </ol>
+</nav>
+<h1 class="h3 mb-3">Cargar comprobante</h1>
+
+<div class="row g-4">
+    <div class="col-lg-7">
+        <form asp-action="Cargar" method="post" enctype="multipart/form-data" class="card" id="formCarga" novalidate>
+            <div class="card-header fw-semibold">1. Subí el archivo</div>
+            <div class="card-body d-grid gap-3">
+                <div id="archivoInputWrap">
+                    <label for="Archivo" class="form-label">Archivo</label>
+                    <input type="file" id="Archivo" name="Archivo" accept=".pdf,.jpg,.jpeg,.png"
+                           class="form-control @(errorArchivo is null ? string.Empty : "is-invalid")"
+                           aria-describedby="archivoAyuda">
+                    <div class="invalid-feedback" id="archivoFeedback">@errorArchivo</div>
+                    <div id="archivoAyuda" class="form-text">PDF, JPG o PNG. Máximo 4 MB. De los PDF se analizan las 2 primeras páginas.</div>
+                </div>
+
+                <div id="archivoSeleccionado" hidden>
+                    <div class="border rounded p-2 d-flex align-items-center gap-3">
+                        <img id="archivoMiniatura" src="" alt="Miniatura del archivo" class="miniatura-archivo rounded border" hidden>
+                        <div id="archivoIconoPdf" hidden>
+                            <div class="miniatura-archivo rounded border bg-body-tertiary d-flex align-items-center justify-content-center text-danger">
+                                <i class="bi bi-file-earmark-pdf fs-3" aria-hidden="true"></i>
+                                <span class="visually-hidden">PDF</span>
+                            </div>
+                        </div>
+                        <div class="flex-grow-1 text-truncate">
+                            <div class="fw-medium text-truncate" id="archivoNombre"></div>
+                            <div class="small text-body-secondary" id="archivoTamanio"></div>
+                            <div class="small text-warning-emphasis" id="archivoAvisoPaginas" hidden>Solo se analizarán las primeras 2 páginas.</div>
+                        </div>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="btnQuitar">Quitar</button>
+                    </div>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-sm-6">
+                        <label asp-for="TipoDocumento" class="form-label">Tipo de documento</label>
+                        <select asp-for="TipoDocumento" class="form-select @ClaseInvalida(nameof(Model.TipoDocumento))">
+                            <option value="">Elegí una opción</option>
+                            @foreach (var tipo in Enum.GetValues<TipoDocumento>())
+                            {
+                                <option value="@tipo">@tipo.Texto()</option>
+                            }
+                        </select>
+                        <span asp-validation-for="TipoDocumento" class="invalid-feedback"></span>
+                    </div>
+                    <div class="col-sm-6">
+                        <label asp-for="Categoria" class="form-label">Categoría</label>
+                        <select asp-for="Categoria" class="form-select @ClaseInvalida(nameof(Model.Categoria))">
+                            <option value="">Elegí una opción</option>
+                            @foreach (var categoria in Enum.GetValues<Categoria>())
+                            {
+                                <option value="@categoria">@categoria.Texto()</option>
+                            }
+                        </select>
+                        <span asp-validation-for="Categoria" class="invalid-feedback"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer d-flex flex-wrap gap-2 justify-content-end">
+                <a href="/Comprobantes" class="btn btn-outline-secondary">Cancelar</a>
+                <button type="submit" class="btn btn-primary" id="btnSubir">
+                    <span class="spinner-border spinner-border-sm me-1" aria-hidden="true" hidden></span>
+                    <span class="texto-boton">Subir y analizar</span>
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <div class="col-lg-5">
+        <partial name="_QuePasaDespues" />
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script src="~/js/validacion-bootstrap.js" asp-append-version="true"></script>
+    <script src="~/js/cargar-comprobante.js" asp-append-version="true"></script>
+}
