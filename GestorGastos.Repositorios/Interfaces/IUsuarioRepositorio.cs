@@ -7,5 +7,6 @@ namespace GestorGastos.Repositorios.Interfaces
         Task<Usuario?> ObtenerPorIdAsync(string id);
         Task AgregarAsync(Usuario usuario);
         Task GuardarCambiosAsync();
+        Task<List<Usuario>> ListarTodosAsync();
     }
 }

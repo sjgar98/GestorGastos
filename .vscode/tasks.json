@@ -13,6 +13,27 @@
       ],
       "group": { "kind": "build", "isDefault": true },
       "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "crear-env-vacio",
+      "type": "process",
+      "command": "true",
+      "windows": {
+        "command": "powershell",
+        "args": [
+          "-NoProfile",
+          "-Command",
+          "if (-not (Test-Path '${workspaceFolder}\\.env')) { New-Item -ItemType File -Path '${workspaceFolder}\\.env' | Out-Null }"
+        ]
+      },
+      "presentation": { "reveal": "silent" },
+      "problemMatcher": []
+    },
+    {
+      "label": "preparar-launch",
+      "dependsOrder": "sequence",
+      "dependsOn": ["crear-env-vacio", "build"],
+      "problemMatcher": []
     }
   ]
 }

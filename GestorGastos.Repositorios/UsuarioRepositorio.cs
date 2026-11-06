@@ -1,5 +1,6 @@
 using GestorGastos.Entidades;
 using GestorGastos.Repositorios.Interfaces;
+using Microsoft.EntityFrameworkCore;
 
 namespace GestorGastos.Repositorios
 {
@@ -25,6 +26,14 @@ namespace GestorGastos.Repositorios
         public async Task GuardarCambiosAsync()
         {
             await _contexto.SaveChangesAsync();
+        }
+
+        public async Task<List<Usuario>> ListarTodosAsync()
+        {
+            return await _contexto.Usuarios
+                .AsNoTracking()
+                .OrderBy(u => u.Nombre)
+                .ToListAsync();
         }
     }
 }

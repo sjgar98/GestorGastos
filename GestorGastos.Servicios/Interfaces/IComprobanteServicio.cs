@@ -1,15 +1,25 @@
 using GestorGastos.DTOs;
+using GestorGastos.DTOs.Admin;
 
 namespace GestorGastos.Servicios.Interfaces
 {
     public interface IComprobanteServicio
     {
+        // ... otros métodos existentes ...
+        Task<PaginadoDto<ComprobanteAdminListadoDto>> ListarAdminAsync(FiltroAdminComprobantesDto filtro);
+        Task<ComprobanteAdminDetalleDto?> ObtenerDetalleAdminAsync(int id);
+
         Task<Resultado<CargaRealizadaDto>> CargarAsync(string usuarioId, CargaComprobanteDto datos, Stream contenido);
         Task<Resultado<EstadoComprobanteDto>> ObtenerEstadoAsync(int id, string usuarioId);
         Task<Resultado<EstadoComprobanteDto>> EditarAsync(int id, string usuarioId, EditarComprobanteDto datos);
         Task<Resultado<bool>> EliminarAsync(int id, string usuarioId);
 
         Task<Resultado<ComprobanteDetalleDto>> ObtenerDetalleAsync(int comprobanteId, string usuarioId);
+
+        Task<Resultado<ComprobanteParaExtraccion>> ObtenerParaExtraccionAsync(string blobNombre);
+        Task<Resultado<bool>> RegistrarExtraccionAsync(string blobNombre, DatosExtraidos datos);
+        Task<Resultado<bool>> RegistrarFallaExtraccionAsync(string blobNombre, string mensajeError);
+
         Task<Resultado<ComprobanteAdminDetalleDto>> ObtenerAdminDetalleAsync(int id, string adminId);
         Task<Resultado<CambioEstadoRespuestaDto>> TomarEnRevisionAsync(int id, string adminId);
         Task<Resultado<CambioEstadoRespuestaDto>> AprobarAsync(int id, string adminId);

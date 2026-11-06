@@ -1,4 +1,5 @@
 using GestorGastos.DTOs;
+using GestorGastos.DTOs.Admin;
 using GestorGastos.DTOs.Enums;
 using GestorGastos.DTOs.Helpers;
 using GestorGastos.Entidades;
@@ -10,13 +11,19 @@ namespace GestorGastos.Servicios
 {
     public class ComprobanteServicio : IComprobanteServicio
     {
-        private static readonly TimeSpan TiempoMaximoProcesando = TimeSpan.FromMinutes(5);
-        private const string MensajeTiempoAgotado = "El análisis tardó demasiado. Completá los datos manualmente.";
-        private const string MensajeNoEncontrado = "El comprobante no existe.";
-
         private readonly IComprobanteRepositorio _comprobanteRepositorio;
         private readonly IAlmacenamientoArchivos _almacenamientoArchivos;
         private readonly ILogger<ComprobanteServicio> _logger;
+        private const int TamanoPaginaDefault = 10;
+        private static readonly TimeSpan TiempoMaximoProcesando = TimeSpan.FromMinutes(5);
+        private const string MensajeTiempoAgotado = "El análisis tardó demasiado. Completá los datos manualmente.";
+        private const string MensajeNoEncontrado = "El comprobante no existe.";
+        private const string MensajeYaProcesado = "El comprobante ya no está en Procesando.";
+        private const string MensajeSinMonto = "No se detectó el monto total del comprobante.";
+        private const string MensajeSinDescripcion = "No se detectó la descripción del comprobante.";
+        private const decimal MontoMaximo = 99_999_999.99m;
+        private const int LargoMaximoComercio = 200;
+        private const int LargoMaximoTexto = 500;
 
         public ComprobanteServicio(
             IComprobanteRepositorio comprobanteRepositorio,
@@ -26,6 +33,34 @@ namespace GestorGastos.Servicios
             _comprobanteRepositorio = comprobanteRepositorio;
             _almacenamientoArchivos = almacenamientoArchivos;
             _logger = logger;
+        }
+
+        public async Task<PaginadoDto<ComprobanteAdminListadoDto>> ListarAdminAsync(FiltroAdminComprobantesDto filtro)
+        {
+            if (filtro.Pagina < 1) filtro.Pagina = 1;
+
+            var (elementosEntidad, total) = await _comprobanteRepositorio.ListarAdminAsync(filtro, TamanoPaginaDefault);
+
+            var elementosDto = elementosEntidad.Select(c => new ComprobanteAdminListadoDto
+            {
+                Id = c.Id,
+                UsuarioId = c.UsuarioId,
+                NombreEmpleado = c.Usuario?.Nombre ?? "Desconocido",
+                EmailEmpleado = c.Usuario?.Email ?? string.Empty,
+                NombreArchivoOriginal = c.NombreArchivoOriginal,
+                FechaCarga = c.FechaCarga,
+                Monto = c.Monto,
+                Moneda = c.Moneda.ToString(),
+                Estado = c.Estado.ToString()
+            }).ToList();
+
+            return new PaginadoDto<ComprobanteAdminListadoDto>
+            {
+                Elementos = elementosDto,
+                TotalRegistros = total,
+                PaginaActual = filtro.Pagina,
+                TamanoPagina = TamanoPaginaDefault
+            };
         }
 
         public async Task<Resultado<CargaRealizadaDto>> CargarAsync(string usuarioId, CargaComprobanteDto datos, Stream contenido)
@@ -162,6 +197,74 @@ namespace GestorGastos.Servicios
             return Resultado<bool>.Exito(true);
         }
 
+        public async Task<Resultado<ComprobanteParaExtraccion>> ObtenerParaExtraccionAsync(string blobNombre)
+        {
+            var comprobante = await _comprobanteRepositorio.ObtenerPorBlobNombreSinSeguimientoAsync(blobNombre);
+            if (comprobante is null)
+                return Resultado<ComprobanteParaExtraccion>.Fallo(TipoError.NoEncontrado, MensajeNoEncontrado);
+
+            if (comprobante.Estado != EstadoComprobante.Procesando)
+                return Resultado<ComprobanteParaExtraccion>.Fallo(TipoError.Conflicto, MensajeYaProcesado);
+
+            return Resultado<ComprobanteParaExtraccion>.Exito(new ComprobanteParaExtraccion
+            {
+                Id = comprobante.Id,
+                NombreArchivoOriginal = comprobante.NombreArchivoOriginal,
+                TipoDocumento = comprobante.TipoDocumento
+            });
+        }
+
+        public async Task<Resultado<bool>> RegistrarExtraccionAsync(string blobNombre, DatosExtraidos datos)
+        {
+            var comprobante = await _comprobanteRepositorio.ObtenerPorBlobNombreAsync(blobNombre);
+            if (comprobante is null)
+                return Resultado<bool>.Fallo(TipoError.NoEncontrado, MensajeNoEncontrado);
+
+            if (comprobante.Estado != EstadoComprobante.Procesando)
+                return Resultado<bool>.Fallo(TipoError.Conflicto, MensajeYaProcesado);
+
+            comprobante.Comercio = NormalizarTexto(datos.Comercio, LargoMaximoComercio);
+            comprobante.FechaComprobante = DescartarFechaFutura(datos.FechaComprobante);
+            comprobante.Descripcion = NormalizarTexto(datos.Descripcion, LargoMaximoTexto);
+            comprobante.Monto = NormalizarMonto(datos.Monto);
+            comprobante.Moneda = datos.Moneda ?? Moneda.ARS;
+            comprobante.ConfianzaDescripcion = datos.ConfianzaDescripcion;
+            comprobante.ConfianzaMonto = datos.ConfianzaMonto;
+
+            var mensajeError = comprobante.Monto is null ? MensajeSinMonto
+                : comprobante.Descripcion is null ? MensajeSinDescripcion
+                : null;
+
+            if (mensajeError is null)
+            {
+                RegistrarCambioEstado(comprobante, EstadoComprobante.PendienteRevision, usuarioId: null, observacion: null);
+            }
+            else
+            {
+                comprobante.MensajeError = mensajeError;
+                RegistrarCambioEstado(comprobante, EstadoComprobante.ErrorExtraccion, usuarioId: null, mensajeError);
+            }
+
+            await _comprobanteRepositorio.GuardarCambiosAsync();
+            return Resultado<bool>.Exito(true);
+        }
+
+        public async Task<Resultado<bool>> RegistrarFallaExtraccionAsync(string blobNombre, string mensajeError)
+        {
+            var comprobante = await _comprobanteRepositorio.ObtenerPorBlobNombreAsync(blobNombre);
+            if (comprobante is null)
+                return Resultado<bool>.Fallo(TipoError.NoEncontrado, MensajeNoEncontrado);
+
+            if (comprobante.Estado != EstadoComprobante.Procesando)
+                return Resultado<bool>.Fallo(TipoError.Conflicto, MensajeYaProcesado);
+
+            comprobante.MensajeError = mensajeError;
+            RegistrarCambioEstado(comprobante, EstadoComprobante.ErrorExtraccion, usuarioId: null, mensajeError);
+
+            await _comprobanteRepositorio.GuardarCambiosAsync();
+            return Resultado<bool>.Exito(true);
+        }
+
         public async Task<Resultado<ComprobanteAdminDetalleDto>> ObtenerAdminDetalleAsync(int id, string adminId)
         {
             var comprobante = await _comprobanteRepositorio.ObtenerPorIdConUsuarioAsync(id);
@@ -270,6 +373,30 @@ namespace GestorGastos.Servicios
         private static bool EsEditablePorElDuenio(EstadoComprobante estado)
         {
             return estado is EstadoComprobante.PendienteRevision or EstadoComprobante.ErrorExtraccion;
+        }
+
+        private static string? NormalizarTexto(string? texto, int largoMaximo)
+        {
+            if (string.IsNullOrWhiteSpace(texto))
+                return null;
+
+            var recortado = texto.Trim();
+            return recortado.Length <= largoMaximo ? recortado : recortado[..largoMaximo];
+        }
+
+        private static DateOnly? DescartarFechaFutura(DateOnly? fecha)
+        {
+            var hoy = DateOnly.FromDateTime(DateTime.UtcNow.ConvertirAArgentina());
+            return fecha > hoy ? null : fecha;
+        }
+
+        private static decimal? NormalizarMonto(decimal? monto)
+        {
+            if (monto is null)
+                return null;
+
+            var redondeado = Math.Round(monto.Value, 2);
+            return redondeado > 0 && redondeado <= MontoMaximo ? redondeado : null;
         }
 
         private static string AcortarNombre(string nombreArchivo)
@@ -461,6 +588,9 @@ namespace GestorGastos.Servicios
             };
         }
 
-
+        public Task<ComprobanteAdminDetalleDto?> ObtenerDetalleAdminAsync(int id)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

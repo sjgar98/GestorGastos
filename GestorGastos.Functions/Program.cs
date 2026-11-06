@@ -1,4 +1,8 @@
 using GestorGastos.Entidades;
+using GestorGastos.Repositorios;
+using GestorGastos.Repositorios.Interfaces;
+using GestorGastos.Servicios;
+using GestorGastos.Servicios.Interfaces;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Builder;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +23,23 @@ if (!string.IsNullOrEmpty(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_
         .ConfigureFunctionsApplicationInsights();
 }
 
-// TODO Extracción: ExtraerComprobanteFunction (Blob Trigger sobre "comprobantes") y registro de los servicios compartidos.
+builder.Services.AddScoped<IComprobanteRepositorio, ComprobanteRepositorio>();
+builder.Services.AddScoped<IComprobanteServicio, ComprobanteServicio>();
+builder.Services.AddScoped<IExtraccionServicio, ExtraccionServicio>();
+builder.Services.AddSingleton<IAlmacenamientoArchivos>(_ => new AlmacenamientoArchivos(
+    builder.Configuration["Storage:ConnectionString"] ?? string.Empty,
+    builder.Configuration["Storage:Contenedor"] ?? string.Empty));
+
+var endpointDocumentIntelligence = builder.Configuration["DocumentIntelligence:Endpoint"];
+if (string.IsNullOrWhiteSpace(endpointDocumentIntelligence))
+{
+    builder.Services.AddSingleton<IExtractorDocumentos, ExtractorDocumentosMock>();
+}
+else
+{
+    builder.Services.AddSingleton<IExtractorDocumentos>(_ => new ExtractorDocumentIntelligence(
+        endpointDocumentIntelligence,
+        builder.Configuration["DocumentIntelligence:Key"] ?? string.Empty));
+}
 
 builder.Build().Run();
