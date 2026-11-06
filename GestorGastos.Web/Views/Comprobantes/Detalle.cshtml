@@ -1,59 +1,10 @@
-﻿@using GestorGastos.DTOs.Enums
+﻿@using System.Globalization
+@using GestorGastos.DTOs.Enums
 @model GestorGastos.DTOs.ComprobanteDetalleDto
 @{
     ViewData["Title"] = Model.NombreArchivoOriginal;
     var puedeModificar = Model.Estado == EstadoComprobante.PendienteRevision
         || Model.Estado == EstadoComprobante.ErrorExtraccion;
-}
-
-@functions {
-    static readonly System.Globalization.CultureInfo Cultura = new System.Globalization.CultureInfo("es-AR");
-    static readonly TimeZoneInfo ZonaArgentina = TimeZoneInfo.FindSystemTimeZoneById("America/Argentina/Buenos_Aires");
-
-    static string TextoEstado(EstadoComprobante estado) => estado switch
-    {
-        EstadoComprobante.Procesando => "Procesando",
-        EstadoComprobante.ErrorExtraccion => "Error de extracción",
-        EstadoComprobante.PendienteRevision => "Pendiente de Revisión",
-        EstadoComprobante.EnRevision => "En Revisión",
-        EstadoComprobante.Aprobado => "Aprobado",
-        EstadoComprobante.Rechazado => "Rechazado",
-        EstadoComprobante.Pagado => "Pagado",
-        _ => estado.ToString()
-    };
-
-    static string ClaseBadge(EstadoComprobante estado) => estado switch
-    {
-        EstadoComprobante.Procesando => "badge text-bg-secondary",
-        EstadoComprobante.ErrorExtraccion => "badge bg-danger-subtle text-danger-emphasis border border-danger-subtle",
-        EstadoComprobante.PendienteRevision => "badge text-bg-warning",
-        EstadoComprobante.EnRevision => "badge text-bg-info",
-        EstadoComprobante.Aprobado => "badge text-bg-primary",
-        EstadoComprobante.Rechazado => "badge text-bg-danger",
-        EstadoComprobante.Pagado => "badge text-bg-success",
-        _ => "badge text-bg-secondary"
-    };
-
-    static string TextoCategoria(Categoria categoria) => categoria == Categoria.Viaticos
-        ? "Viáticos"
-        : categoria.ToString();
-
-    static string FormatearMonto(decimal? monto, Moneda? moneda)
-    {
-        if (monto == null)
-        {
-            return "—";
-        }
-
-        var simbolo = moneda == null || moneda == Moneda.ARS ? "$" : moneda.ToString();
-        return $"{simbolo} {monto.Value.ToString("N2", Cultura)}";
-    }
-
-    static string FormatearFechaHora(DateTime fechaUtc)
-    {
-        var utc = DateTime.SpecifyKind(fechaUtc, DateTimeKind.Utc);
-        return TimeZoneInfo.ConvertTimeFromUtc(utc, ZonaArgentina).ToString("dd/MM/yyyy HH:mm", Cultura);
-    }
 }
 
 <nav aria-label="breadcrumb">
@@ -65,7 +16,7 @@
 
 <h1 class="h2 mb-4">
     @Model.NombreArchivoOriginal
-    <span class="@ClaseBadge(Model.Estado) fs-6 align-middle">@TextoEstado(Model.Estado)</span>
+    <span class="@Model.Estado.ClaseBadge() fs-6 align-middle">@Model.Estado.Texto()</span>
 </h1>
 
 <div class="row g-4">
@@ -112,30 +63,30 @@
                     <dd class="col-sm-7">@Model.NombreArchivoOriginal</dd>
 
                     <dt class="col-sm-5 fw-normal text-muted">Tipo</dt>
-                    <dd class="col-sm-7">@Model.TipoDocumento</dd>
+                    <dd class="col-sm-7">@Model.TipoDocumento.Texto()</dd>
 
                     <dt class="col-sm-5 fw-normal text-muted">Categoría</dt>
-                    <dd class="col-sm-7">@TextoCategoria(Model.Categoria)</dd>
+                    <dd class="col-sm-7">@Model.Categoria.Texto()</dd>
 
                     <dt class="col-sm-5 fw-normal text-muted">Comercio</dt>
                     <dd class="col-sm-7">@(string.IsNullOrWhiteSpace(Model.Comercio) ? "—" : Model.Comercio)</dd>
 
                     <dt class="col-sm-5 fw-normal text-muted">Fecha del comprobante</dt>
-                    <dd class="col-sm-7">@(Model.FechaComprobante?.ToString("dd/MM/yyyy", System.Globalization.CultureInfo.InvariantCulture) ?? "—")</dd>
+                    <dd class="col-sm-7">@(Model.FechaComprobante?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "—")</dd>
 
                     <dt class="col-sm-5 fw-normal text-muted">Descripción</dt>
                     <dd class="col-sm-7">@(string.IsNullOrWhiteSpace(Model.Descripcion) ? "—" : Model.Descripcion)</dd>
 
                     <dt class="col-sm-5 fw-normal text-muted">Monto</dt>
-                    <dd class="col-sm-7 fw-bold">@FormatearMonto(Model.Monto, Model.Moneda)</dd>
+                    <dd class="col-sm-7 fw-bold">@Model.Monto.Moneda(Model.Moneda?.ToString())</dd>
 
                     <dt class="col-sm-5 fw-normal text-muted">Fecha de carga</dt>
-                    <dd class="col-sm-7">@FormatearFechaHora(Model.FechaCarga)</dd>
+                    <dd class="col-sm-7">@Model.FechaCarga.ConvertirAArgentina().ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture)</dd>
 
                     @if (Model.FechaPago != null)
                     {
                         <dt class="col-sm-5 fw-normal text-muted">Fecha de pago</dt>
-                        <dd class="col-sm-7">@FormatearFechaHora(Model.FechaPago.Value)</dd>
+                        <dd class="col-sm-7">@Model.FechaPago.Value.ConvertirAArgentina().ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture)</dd>
                     }
 
                     @if (Model.EditadoManualmente)
@@ -165,12 +116,12 @@
                             <div>
                                 @if (cambio.EstadoAnterior != null)
                                 {
-                                    <span class="@ClaseBadge(cambio.EstadoAnterior.Value)">@TextoEstado(cambio.EstadoAnterior.Value)</span>
+                                    <span class="@cambio.EstadoAnterior.Value.ClaseBadge()">@cambio.EstadoAnterior.Value.Texto()</span>
                                     <i class="bi bi-arrow-right mx-1"></i>
                                 }
-                                <span class="@ClaseBadge(cambio.EstadoNuevo)">@TextoEstado(cambio.EstadoNuevo)</span>
+                                <span class="@cambio.EstadoNuevo.ClaseBadge()">@cambio.EstadoNuevo.Texto()</span>
                             </div>
-                            <small class="text-muted">@FormatearFechaHora(cambio.Fecha)</small>
+                            <small class="text-muted">@cambio.Fecha.ConvertirAArgentina().ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture)</small>
                         </div>
                         <div class="small mt-1">
                             @(cambio.UsuarioNombre ?? "Procesamiento automático")
