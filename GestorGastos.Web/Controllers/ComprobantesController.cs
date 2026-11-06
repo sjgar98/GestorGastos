@@ -20,15 +20,73 @@ namespace GestorGastos.Web.Controllers
 
         public async Task<IActionResult> Detalle(int id)
         {
-            var usuarioId = User.GetObjectId()!;
-            var resultado = await _comprobanteServicio.ObtenerDetalleAsync(id, usuarioId);
+            var resultado = await _comprobanteServicio.ObtenerDetalleAsync(id, User.GetObjectId()!);
 
             if (!resultado.Exitoso)
             {
                 return NotFound();
             }
 
-            return View(resultado.Valor);
+            return View(new DetalleComprobanteViewModel
+            {
+                Comprobante = resultado.Valor!,
+                Formulario = AFormulario(resultado.Valor!)
+            });
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> EditarDetalle(int id, [Bind(Prefix = nameof(DetalleComprobanteViewModel.Formulario))] EditarComprobanteDto formulario)
+        {
+            var usuarioId = User.GetObjectId()!;
+
+            if (!ModelState.IsValid)
+            {
+                return await VistaDetalleConFormularioAsync(id, usuarioId, formulario);
+            }
+
+            var resultado = await _comprobanteServicio.EditarAsync(id, usuarioId, formulario);
+            if (resultado.Error == TipoError.NoEncontrado)
+            {
+                return NotFound();
+            }
+
+            if (!resultado.Exitoso)
+            {
+                ModelState.AddModelError(string.Empty, resultado.Mensaje!);
+                return await VistaDetalleConFormularioAsync(id, usuarioId, formulario);
+            }
+
+            TempData["MensajeExito"] = "Cambios guardados.";
+            return RedirectToAction(nameof(Detalle), new { id });
+        }
+
+        private async Task<IActionResult> VistaDetalleConFormularioAsync(int id, string usuarioId, EditarComprobanteDto formulario)
+        {
+            var detalle = await _comprobanteServicio.ObtenerDetalleAsync(id, usuarioId);
+            if (!detalle.Exitoso)
+            {
+                return NotFound();
+            }
+
+            return View(nameof(Detalle), new DetalleComprobanteViewModel
+            {
+                Comprobante = detalle.Valor!,
+                Formulario = formulario
+            });
+        }
+
+        private static EditarComprobanteDto AFormulario(ComprobanteDetalleDto comprobante)
+        {
+            return new EditarComprobanteDto
+            {
+                Comercio = comprobante.Comercio,
+                FechaComprobante = comprobante.FechaComprobante,
+                Descripcion = comprobante.Descripcion,
+                Monto = comprobante.Monto,
+                Moneda = comprobante.Moneda ?? Moneda.ARS,
+                Categoria = comprobante.Categoria
+            };
         }
 
         [HttpGet]
