@@ -1,4 +1,5 @@
-﻿using GestorGastos.Servicios.Interfaces;
+﻿using GestorGastos.Entidades;
+using GestorGastos.Servicios.Interfaces;
 using GestorGastos.Web.Helpers;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Identity.Web;
@@ -30,5 +31,15 @@ namespace GestorGastos.Web.Controllers.Api
             var resultado = await _comprobanteServicio.EliminarAsync(id, User.GetObjectId()!);
             return resultado.Exitoso ? NoContent() : this.ComoProblema(resultado);
         }
+
+        [HttpGet("{id:int}/archivo")]
+        public async Task<IActionResult> ObtenerArchivo(int id, [FromQuery] bool descarga = false)
+        {
+            var resultado = await _comprobanteServicio.ObtenerUrlArchivoAsync(
+                id, User.GetObjectId()!, User.IsInRole(Roles.Administrador), descarga);
+
+            return resultado.Exitoso ? Ok(resultado.Valor) : this.ComoProblema(resultado);
+        }
+
     }
 }

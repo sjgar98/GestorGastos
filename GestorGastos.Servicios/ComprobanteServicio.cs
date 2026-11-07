@@ -352,6 +352,22 @@ namespace GestorGastos.Servicios
             return Resultado<CambioEstadoRespuestaDto>.Exito(ACambioEstadoDto(comprobante));
         }
 
+        public async Task<Resultado<UrlArchivoDto>> ObtenerUrlArchivoAsync(int comprobanteId, string usuarioId, bool esAdministrador, bool descarga)
+        {
+            var comprobante = await _comprobanteRepositorio.ObtenerPorIdAsync(comprobanteId);
+
+            if (comprobante == null || (!esAdministrador && comprobante.UsuarioId != usuarioId))
+            {
+                return Resultado<UrlArchivoDto>.Fallo(TipoError.NoEncontrado, "El comprobante no existe.");
+            }
+
+            var nombreDescarga = descarga ? comprobante.NombreArchivoOriginal : null;
+            var url = await _almacenamientoArchivos.GenerarUrlLecturaAsync(comprobante.BlobNombre, nombreDescarga);
+            url.ContentType = comprobante.ContentType;
+
+            return Resultado<UrlArchivoDto>.Exito(url);
+        }
+
         // ── Helpers privados ──────────────────────────────────────────────────────
 
         private static bool EsEditablePorElDuenio(EstadoComprobante estado)
@@ -523,6 +539,52 @@ namespace GestorGastos.Servicios
                 Id = c.Id,
                 Estado = c.Estado,
                 EstadoTexto = c.Estado.Texto()
+            };
+        }
+
+        public async Task<Resultado<ComprobanteDetalleDto>> ObtenerDetalleAsync(int comprobanteId, string usuarioId)
+        {
+            var comprobante = await _comprobanteRepositorio.ObtenerPorIdAsync(comprobanteId);
+
+            if (comprobante == null || comprobante.UsuarioId != usuarioId)
+            {
+                return Resultado<ComprobanteDetalleDto>.Fallo(TipoError.NoEncontrado, "El comprobante no existe.");
+            }
+
+            return Resultado<ComprobanteDetalleDto>.Exito(ADto(comprobante));
+        }
+
+        private static ComprobanteDetalleDto ADto(Comprobante comprobante)
+        {
+            return new ComprobanteDetalleDto
+            {
+                Id = comprobante.Id,
+                NombreArchivoOriginal = comprobante.NombreArchivoOriginal,
+                ContentType = comprobante.ContentType,
+                TipoDocumento = comprobante.TipoDocumento,
+                Categoria = comprobante.Categoria,
+                Estado = comprobante.Estado,
+                Comercio = comprobante.Comercio,
+                FechaComprobante = comprobante.FechaComprobante,
+                Descripcion = comprobante.Descripcion,
+                Monto = comprobante.Monto,
+                Moneda = comprobante.Moneda,
+                MensajeError = comprobante.MensajeError,
+                MotivoRechazo = comprobante.MotivoRechazo,
+                FechaCarga = comprobante.FechaCarga,
+                FechaPago = comprobante.FechaPago,
+                EditadoManualmente = comprobante.EditadoManualmente,
+                Historial = comprobante.Historial
+                    .OrderByDescending(h => h.Fecha)
+                    .Select(h => new HistorialEstadoDto
+                    {
+                        EstadoAnterior = h.EstadoAnterior,
+                        EstadoNuevo = h.EstadoNuevo,
+                        Fecha = h.Fecha,
+                        UsuarioNombre = h.Usuario?.Nombre,
+                        Observacion = h.Observacion
+                    })
+                    .ToList()
             };
         }
 
