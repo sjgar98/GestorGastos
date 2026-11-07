@@ -13,9 +13,14 @@
     @Html.AntiForgeryToken()
     @if (User.Identity?.IsAuthenticated == true)
     {
+        var areaActual = ViewContext.RouteData.Values["area"]?.ToString();
         var controladorActual = ViewContext.RouteData.Values["controller"]?.ToString();
         var accionActual = ViewContext.RouteData.Values["action"]?.ToString();
-        var enCargar = controladorActual == "Comprobantes" && accionActual is "Cargar" or "Resultado" or "Editar";
+        var enAdministracion = areaActual == "Admin";
+        var enDashboard = !enAdministracion && controladorActual == "Home" && accionActual == "Index";
+        var enComprobantes = !enAdministracion && controladorActual == "Comprobantes";
+        var enCargar = enComprobantes && accionActual is "Cargar" or "Resultado" or "Editar";
+        var enMisComprobantes = enComprobantes && !enCargar;
         <nav class="navbar navbar-expand-md bg-body border-bottom">
             <div class="container">
                 <a class="navbar-brand fw-semibold" asp-area="" asp-controller="Home" asp-action="Index">Reembolsos</a>
@@ -27,13 +32,19 @@
                         @if (User.TieneRol())
                         {
                             <li class="nav-item">
-                                <a class="nav-link @(controladorActual == "Home" ? "active" : "")" asp-area="" asp-controller="Home" asp-action="Index">Dashboard</a>
+                                <a class="nav-link @(enDashboard ? "active" : "")" aria-current="@(enDashboard ? "page" : null)" asp-area="" asp-controller="Home" asp-action="Index">Dashboard</a>
                             </li>
-                            <li class="nav-item"><a class="nav-link" href="/Comprobantes">Mis comprobantes</a></li>
-                            <li class="nav-item"><a class="nav-link @(enCargar ? "active" : "")" href="/Comprobantes/Cargar">Cargar</a></li>
+                            <li class="nav-item">
+                                <a class="nav-link @(enMisComprobantes ? "active" : "")" aria-current="@(enMisComprobantes ? "page" : null)" href="/Comprobantes">Mis comprobantes</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link @(enCargar ? "active" : "")" aria-current="@(enCargar ? "page" : null)" asp-area="" asp-controller="Comprobantes" asp-action="Cargar">Cargar</a>
+                            </li>
                             @if (User.IsInRole(Roles.Administrador))
                             {
-                                <li class="nav-item"><a class="nav-link" href="/Admin/Comprobantes">Administración</a></li>
+                                <li class="nav-item">
+                                    <a class="nav-link @(enAdministracion ? "active" : "")" aria-current="@(enAdministracion ? "page" : null)" asp-area="Admin" asp-controller="Comprobantes" asp-action="Index">Administración</a>
+                                </li>
                             }
                         }
                     </ul>
