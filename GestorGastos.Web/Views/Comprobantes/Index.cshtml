@@ -6,6 +6,7 @@
     var sinResultados = Model.TotalRegistros == 0;
     var desde = ((Model.PaginaActual - 1) * Model.TamanoPagina) + 1;
     var hasta = Math.Min(Model.PaginaActual * Model.TamanoPagina, Model.TotalRegistros);
+    var hayEliminables = Model.Elementos.Any(c => c.Estado is EstadoComprobante.PendienteRevision or EstadoComprobante.ErrorExtraccion);
 }
 
 <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
@@ -63,6 +64,7 @@
                 {
                     foreach (var comprobante in Model.Elementos)
                     {
+                        var sePuedeEliminar = comprobante.Estado is EstadoComprobante.PendienteRevision or EstadoComprobante.ErrorExtraccion;
                         <tr>
                             <td class="fw-medium">@comprobante.NombreArchivoOriginal</td>
                             <td>@comprobante.FechaCarga.FechaLocal()</td>
@@ -71,6 +73,12 @@
                             <td class="text-end">
                                 <div class="btn-group btn-group-sm" role="group">
                                     <a asp-action="Detalle" asp-route-id="@comprobante.Id" class="btn btn-outline-secondary" title="Ver detalle">Ver detalle</a>
+                                    @if (sePuedeEliminar)
+                                    {
+                                        <button type="button" class="btn btn-outline-danger"
+                                                data-bs-toggle="modal" data-bs-target="#modal-eliminar"
+                                                data-id="@comprobante.Id" data-nombre="@comprobante.NombreArchivoOriginal">Eliminar</button>
+                                    }
                                 </div>
                             </td>
                         </tr>
@@ -129,6 +137,28 @@
         </nav>
     </div>
 </div>
+
+@if (hayEliminables)
+{
+    <div class="modal fade" id="modal-eliminar" tabindex="-1" aria-labelledby="titulo-modal-eliminar" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title fs-5" id="titulo-modal-eliminar">Eliminar comprobante</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="error-eliminar" class="alert alert-danger d-none" role="alert"></div>
+                    <p class="mb-0">Se va a eliminar <strong id="nombre-eliminar"></strong> y su archivo. Esta acción no se puede deshacer.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" id="confirmar-eliminar" class="btn btn-danger">Eliminar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
 
 @section Scripts {
     <script src="~/js/mis-comprobantes.js" asp-append-version="true"></script>
