@@ -101,7 +101,7 @@
                     @if (c.FechaPago != null)
                     {
                         <dt class="col-sm-5 fw-normal text-muted">Fecha de pago</dt>
-                        <dd class="col-sm-7">@c.FechaPago.Value.ConvertirAArgentina().ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture)</dd>
+                        <dd class="col-sm-7">@c.FechaPago.Value.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)</dd>
                     }
 
                     @if (c.EditadoManualmente)
