@@ -1,4 +1,4 @@
-﻿using GestorGastos.DTOs;
+using GestorGastos.DTOs;
 using GestorGastos.DTOs.Enums;
 using GestorGastos.Servicios;
 using GestorGastos.Servicios.Interfaces;
@@ -16,6 +16,14 @@ namespace GestorGastos.Web.Controllers
         public ComprobantesController(IComprobanteServicio comprobanteServicio)
         {
             _comprobanteServicio = comprobanteServicio;
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> Index([FromQuery] FiltroMisComprobantesDto filtro)
+        {
+            ViewBag.Filtro = filtro;
+            var listado = await _comprobanteServicio.ListarMisComprobantesAsync(User.GetObjectId()!, filtro);
+            return View(listado);
         }
 
         public async Task<IActionResult> Detalle(int id)

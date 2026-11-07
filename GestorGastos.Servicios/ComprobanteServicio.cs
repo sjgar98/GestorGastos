@@ -62,6 +62,31 @@ namespace GestorGastos.Servicios
             };
         }
 
+        public async Task<PaginadoDto<ComprobanteListadoDto>> ListarMisComprobantesAsync(string usuarioId, FiltroMisComprobantesDto filtro)
+        {
+            if (filtro.Pagina < 1) filtro.Pagina = 1;
+
+            var (elementosEntidad, total) = await _comprobanteRepositorio.ListarPorUsuarioAsync(usuarioId, filtro, TamanoPaginaDefault);
+
+            var elementosDto = elementosEntidad.Select(c => new ComprobanteListadoDto
+            {
+                Id = c.Id,
+                NombreArchivoOriginal = c.NombreArchivoOriginal,
+                FechaCarga = c.FechaCarga,
+                Monto = c.Monto,
+                Moneda = c.Moneda?.ToString(),
+                Estado = c.Estado
+            }).ToList();
+
+            return new PaginadoDto<ComprobanteListadoDto>
+            {
+                Elementos = elementosDto,
+                TotalRegistros = total,
+                PaginaActual = filtro.Pagina,
+                TamanoPagina = TamanoPaginaDefault
+            };
+        }
+
         public async Task<Resultado<CargaRealizadaDto>> CargarAsync(string usuarioId, CargaComprobanteDto datos, Stream contenido)
         {
             using var memoria = new MemoryStream();
