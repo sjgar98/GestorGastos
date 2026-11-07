@@ -3,25 +3,21 @@ using Microsoft.EntityFrameworkCore;
 using GestorGastos.DTOs;
 using GestorGastos.Entidades;
 using GestorGastos.Repositorios.Interfaces;
-using System.Diagnostics; 
-﻿using GestorGastos.Entidades;
-using GestorGastos.Repositorios.Interfaces;
-using Microsoft.EntityFrameworkCore;
 
 namespace GestorGastos.Repositorios
 {
     public class ComprobanteRepositorio : IComprobanteRepositorio
     {
-        private readonly GestorGastosDbContext _context;
+        private readonly GestorGastosDbContext _contexto;
 
          public ComprobanteRepositorio(GestorGastosDbContext contexto)
         {
-            _context = contexto;
+            _contexto = contexto;
         }
 
         public async Task<(List<Comprobante> Elementos, int Total)> ListarAdminAsync(FiltroAdminComprobantesDto filtro, int tamanoPagina)
         {
-            var query = _context.Comprobantes
+            var query = _contexto.Comprobantes
                 .Include(c => c.Usuario)
                 .AsNoTracking()
                 .AsQueryable();
@@ -76,13 +72,12 @@ namespace GestorGastos.Repositorios
 
         public async Task<Comprobante?> ObtenerConDetalleAsync(int id)
         {
-            return await _context.Comprobantes
+            return await _contexto.Comprobantes
                 .Include(x => x.Usuario)
                 .Include(x => x.Historial)
                     .ThenInclude(h => h.Usuario)
                 .FirstOrDefaultAsync(x => x.Id == id);
         }
-        private readonly GestorGastosDbContext _contexto;
 
    
 
