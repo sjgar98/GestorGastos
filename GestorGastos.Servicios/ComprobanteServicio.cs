@@ -51,7 +51,7 @@ namespace GestorGastos.Servicios
                 FechaCarga = c.FechaCarga,
                 Monto = c.Monto,
                 Moneda = c.Moneda.ToString(),
-                Estado = c.Estado.ToString()
+                Estado = c.Estado
             }).ToList();
 
             return new PaginadoDto<ComprobanteAdminListadoDto>
@@ -592,5 +592,6 @@ namespace GestorGastos.Servicios
         {
             throw new NotImplementedException();
         }
+
     }
 }
