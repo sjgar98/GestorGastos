@@ -1,6 +1,6 @@
 using GestorGastos.DTOs;
-    namespace GestorGastos.Servicios.Interfaces
 
+namespace GestorGastos.Servicios.Interfaces
 {
     public interface IUsuarioServicio
     {

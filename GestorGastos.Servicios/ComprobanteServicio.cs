@@ -1,5 +1,4 @@
 using GestorGastos.DTOs;
-using GestorGastos.DTOs.Admin;
 using GestorGastos.DTOs.Enums;
 using GestorGastos.DTOs.Helpers;
 using GestorGastos.Entidades;
@@ -587,11 +586,5 @@ namespace GestorGastos.Servicios
                     .ToList()
             };
         }
-
-        public Task<ComprobanteAdminDetalleDto?> ObtenerDetalleAdminAsync(int id)
-        {
-            throw new NotImplementedException();
-        }
-
     }
 }

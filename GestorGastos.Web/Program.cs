@@ -47,13 +47,6 @@ builder.Services.AddAuthorization(options =>
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddProblemDetails();
-// Registro de Repositorios
-builder.Services.AddScoped<IComprobanteRepositorio, ComprobanteRepositorio>();
-
-
-// Registro de Servicios
-builder.Services.AddScoped<IComprobanteServicio, ComprobanteServicio>();
-
 
 if (!string.IsNullOrEmpty(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
     builder.Services.AddApplicationInsightsTelemetry();

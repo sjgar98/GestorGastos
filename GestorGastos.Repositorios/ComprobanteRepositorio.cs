@@ -53,15 +53,6 @@ namespace GestorGastos.Repositorios
             return (elementos, total);
         }
 
-        public async Task<Comprobante?> ObtenerConDetalleAsync(int id)
-        {
-            return await _context.Comprobantes
-                .Include(x => x.Usuario)
-                .Include(x => x.Historial)
-                    .ThenInclude(h => h.Usuario)
-                .FirstOrDefaultAsync(x => x.Id == id);
-        }
-
         public async Task<Comprobante?> ObtenerPorIdAsync(int id)
         {
             return await _context.Comprobantes
