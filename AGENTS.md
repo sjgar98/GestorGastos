@@ -327,10 +327,9 @@ Leyenda: ✅ hecho · 🟡 parcial/mock · ❌ no existe. Actualizar en cada PR.
 | — | Application Insights + logs de 7.6 en web y Function | — | — | ❌ |
 | — | Despliegue (App Service, Function App, Azure SQL, Storage, Event Grid, DI F0) | — | — | ❌ |
 | — | README (diagrama, recursos, App Registration + App Roles, variables, correr local, desplegar) | — | — | ❌ |
-| — | 3 usuarios de prueba en el tenant (2 Empleado, 1 Administrador) | — | — | ❌ |
+| — | 2 usuarios de prueba en el tenant (1 Empleado, 1 Administrador) | — | — | ✅ |
 | — | Captura de App Insights con una extracción completa | — | — | ❌ |
 | — | Opcional: CI/CD (GitHub Actions) web + Function | — | — | 🟡 CI ✅ (compila la solución en push y PR a `main`); falta el despliegue (CD) |
-| — | Opcional: Managed Identity en lugar de secretos | — | — | ❌ |
 
 ## 6. Mocks y pendientes de integración
 
@@ -339,7 +338,7 @@ elige por configuración en `Program.cs` (web y Function), nunca con `if` en la 
 
 | Dependencia | Abstracción | Local / mock | Azure | Cómo se elige |
 |---|---|---|---|---|
-| Blob Storage | `IAlmacenamientoArchivos` (`SubirAsync`, `EliminarAsync` tolerando inexistente, `GenerarUrlLecturaAsync(blob, nombreDescarga?, 5 min)`) | Azurite (mismo SDK; SAS funciona con la cuenta de desarrollo) | Azure Storage con connection string que incluya la clave de la cuenta (la SAS se firma con ella). Managed Identity + User Delegation SAS requeriría cambiar `AlmacenamientoArchivos` | `Storage:ConnectionString` + `Storage:Contenedor` (vacías → excepción al resolver el servicio) |
+| Blob Storage | `IAlmacenamientoArchivos` (`SubirAsync`, `EliminarAsync` tolerando inexistente, `GenerarUrlLecturaAsync(blob, nombreDescarga?, 5 min)`) | Azurite (mismo SDK; SAS funciona con la cuenta de desarrollo) | Azure Storage con connection string que incluya la clave de la cuenta (la SAS se firma con ella). | `Storage:ConnectionString` + `Storage:Contenedor` (vacías → excepción al resolver el servicio) |
 | Document Intelligence | `IExtractorDocumentos` (`ExtraerAsync(stream, TipoDocumento, nombreArchivo, cancelacion)` → `DatosExtraidos`: comercio, fecha, descripción, monto, moneda, confianzas; `nombreArchivo` es el original y solo lo usa el mock) | `ExtractorDocumentosMock`: determinístico; si el nombre original contiene `error` o `borroso` devuelve datos vacíos, lo que termina en "No se detectó el monto total del comprobante."; si no, devuelve datos de ejemplo con `ConfianzaDescripcion` < 0,8. Cada uso deja un `LogWarning` | `ExtractorDocumentIntelligence` con `prebuilt-receipt` / `prebuilt-invoice` | `DocumentIntelligence:Endpoint` vacío → mock |
 | Disparo de la Function | Blob Trigger | Azurite + `func start` (trigger clásico, polling) | Blob Trigger `Source = EventGrid` + suscripción Event Grid | `#if DEBUG` en `ExtraerComprobanteFunction`: el build Debug usa el trigger clásico y Release, Event Grid. Conexión: `Storage:ConnectionString` |
 | Base de datos | `GestorGastosDbContext` | LocalDB (Windows) o SQL Server en Docker (`GESTORGASTOS_DB_HOST`) | Azure SQL Database free | `ConnectionStrings:GestorGastos` (vacía → local, `ConexionBaseDatos`) |
@@ -534,8 +533,8 @@ P1 y P2 son la misma acción (`HomeController.Index`, que también responde en `
 ### 7.7 Entregables y criterios de aceptación
 Entregables: repo con web + Function + librerías; migraciones; README (diagrama, recursos de Azure,
 App Registration + App Roles, variables sin valores, correr local y desplegar); URL pública en App Service
-funcionando durante la corrección; 3 usuarios de prueba (2 Empleado, 1 Administrador) entregados por canal
-privado; captura de App Insights con trazas de una extracción completa; opcional CI/CD y Managed Identity.
+funcionando durante la corrección; 2 usuarios de prueba (1 Empleado, 1 Administrador) entregados por canal
+privado; captura de App Insights con trazas de una extracción completa; opcional CI/CD.
 
 Checklist de aceptación:
 - [ ] Usuario sin rol no accede a ninguna pantalla autenticada.
@@ -589,23 +588,23 @@ repositorio sin otros usos → DTOs → entidad + migración. Buscar referencias
 y actualizar las secciones 5 y 6.
 
 ### 8.5 Datos de ejemplo del prototipo (para pruebas manuales y capturas)
-Los usuarios reales vienen de Entra ID; estos sirven para crear las cuentas de prueba del tenant y archivos de ejemplo.
-- Usuarios: **Lucía Benítez** y **Martín Ferreyra** (Empleado), **Carolina Ruiz** (Administrador),
+Los usuarios reales vienen de Entra ID; estos sirven para archivos de ejemplo.
+- Usuarios: **Lucía Benítez** (Empleado) y **Martín Ferreyra** (Administrador),
   emails `<nombre>.<apellido>@<tenant>.onmicrosoft.com`.
 - Comprobantes del prototipo: `ticket-taxi-ezeiza.jpg` (Lucía, Recibo, Traslados, Taxi Ezeiza SRL, $18.450, PendienteRevision),
   `factura-hotel-cordoba.pdf` (Lucía, Factura, Hospedaje, $142.300, EnRevision), `almuerzo-cliente.png` (Lucía, Viáticos, $36.900, Aprobado),
   `pasaje-aep-cor.pdf` (Lucía, Pasajes, $215.780,50, Pagado), `estacionamiento.jpg` (Lucía, $4.500, Rechazado: "El gasto corresponde a un
   día sin viaje registrado."), `recibo-borroso.jpg` (Lucía, ErrorExtraccion: "No se detectó el monto total del comprobante."),
-  `peaje-autopista.jpg` (Lucía, Procesando), `combustible-ruta-2.jpg` (Martín, $52.000, PendienteRevision),
-  `cena-equipo.jpg` (Martín, $88.400, EnRevision, confianza descripción 0,71), `hotel-rosario.pdf` (Martín, $98.500, Aprobado),
-  `taxi-reunion-cliente.jpg` (Carolina, $12.300, PendienteRevision — caso "propio" del admin), `remis-aeroparque.jpg` (Martín, $15.600, Pagado).
+  `peaje-autopista.jpg` (Lucía, Procesando), `combustible-ruta-2.jpg` (Lucía, $52.000, PendienteRevision),
+  `cena-equipo.jpg` (Lucía, $88.400, EnRevision, confianza descripción 0,71), `hotel-rosario.pdf` (Lucía, $98.500, Aprobado),
+  `taxi-reunion-cliente.jpg` (Martín, $12.300, PendienteRevision — caso "propio" del admin), `remis-aeroparque.jpg` (Lucía, $15.600, Pagado).
 
 ## 9. Gotchas
 
 - **No usar Razor Pages** (ni `AddRazorPages`): login y logout los resuelve `CuentaController` (ver 0), por eso no se
   usa `Microsoft.Identity.Web.UI`.
 - `AlmacenamientoArchivos` firma la SAS con la clave de la cuenta (`CanGenerateSasUri`): con una connection string sin
-  `AccountKey` (o con Managed Identity) `GenerarUrlLecturaAsync` lanza `InvalidOperationException`. Sin
+  `AccountKey` `GenerarUrlLecturaAsync` lanza `InvalidOperationException`. Sin
   `Storage:ConnectionString` o `Storage:Contenedor` el constructor también falla, pero recién al resolver el servicio
   (cualquier request que use `ComprobanteServicio`), no al arrancar.
 - El Blob Trigger clásico puede demorar minutos: en Azure usar origen **Event Grid** (criterio "< 1 minuto").

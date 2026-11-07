@@ -310,7 +310,6 @@ Cada regla se valida en el servidor. La validación en cliente es complementaria
 - Toda consulta de comprobantes de empleado filtra por `UsuarioId` del usuario logueado.
 - Los controllers usan `[Authorize]` y `[Authorize(Roles = "Administrador")]` donde corresponda. Ocultar botones no reemplaza esa validación.
 - HTTPS obligatorio y antiforgery en todos los formularios.
-- Opcional (suma): Managed Identity entre App Service, Function, Storage y SQL en lugar de secretos.
 
 **Monitoreo con Application Insights**
 
@@ -344,7 +343,7 @@ Cada regla se valida en el servidor. La validación en cliente es complementaria
 2. Migraciones de EF Core versionadas.
 3. README con: diagrama de arquitectura, recursos de Azure creados, configuración del App Registration y los App Roles, variables de configuración (sin valores secretos) y pasos para correr en local y desplegar.
 4. URL pública de la aplicación en App Service, funcionando durante la corrección.
-5. Tres usuarios de prueba en el tenant del equipo, con credenciales entregadas por un canal privado a la cátedra: dos con rol Empleado y uno con rol Administrador.
+5. Dos usuarios de prueba en el tenant del equipo, con credenciales entregadas por un canal privado a la cátedra: uno con rol Empleado y uno con rol Administrador.
 6. Captura de Application Insights con trazas de una extracción completa.
 7. Opcional (suma): pipeline de CI/CD en GitHub Actions o Azure DevOps que compile y despliegue la web y la Function.
 
