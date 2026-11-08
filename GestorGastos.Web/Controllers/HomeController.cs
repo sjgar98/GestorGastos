@@ -1,15 +1,24 @@
 using System.Diagnostics;
+using GestorGastos.Servicios.Interfaces;
 using GestorGastos.Web.Helpers;
 using GestorGastos.Web.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Identity.Web;
 
 namespace GestorGastos.Web.Controllers
 {
     public class HomeController : Controller
     {
+        private readonly IComprobanteServicio _comprobanteServicio;
+
+        public HomeController(IComprobanteServicio comprobanteServicio)
+        {
+            _comprobanteServicio = comprobanteServicio;
+        }
+
         [AllowAnonymous]
-        public IActionResult Index()
+        public async Task<IActionResult> Index()
         {
             if (User.Identity?.IsAuthenticated != true)
                 return View("Bienvenida");
@@ -17,7 +26,8 @@ namespace GestorGastos.Web.Controllers
             if (!User.TieneRol())
                 return Forbid();
 
-            return View();
+            var resumen = await _comprobanteServicio.ObtenerResumenAsync(User.GetObjectId()!);
+            return View(resumen);
         }
 
         [AllowAnonymous]

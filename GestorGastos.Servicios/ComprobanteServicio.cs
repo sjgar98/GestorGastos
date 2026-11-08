@@ -23,6 +23,13 @@ namespace GestorGastos.Servicios
         private const decimal MontoMaximo = 99_999_999.99m;
         private const int LargoMaximoComercio = 200;
         private const int LargoMaximoTexto = 500;
+        private static readonly EstadoComprobante[] EstadosAbiertos =
+        {
+            EstadoComprobante.Procesando,
+            EstadoComprobante.ErrorExtraccion,
+            EstadoComprobante.PendienteRevision,
+            EstadoComprobante.EnRevision
+        };
 
         public ComprobanteServicio(
             IComprobanteRepositorio comprobanteRepositorio,
@@ -84,6 +91,26 @@ namespace GestorGastos.Servicios
                 TotalRegistros = total,
                 PaginaActual = filtro.Pagina,
                 TamanoPagina = TamanoPaginaDefault
+            };
+        }
+
+        public async Task<ResumenDashboardDto> ObtenerResumenAsync(string usuarioId)
+        {
+            var conteos = await _comprobanteRepositorio.ContarPorEstadoAsync(usuarioId);
+
+            var porEstado = EstadosAbiertos
+                .Select(estado => new ConteoEstadoDto
+                {
+                    Estado = estado,
+                    Cantidad = conteos.GetValueOrDefault(estado)
+                })
+                .ToList();
+
+            return new ResumenDashboardDto
+            {
+                DocumentosAbiertos = porEstado.Sum(conteo => conteo.Cantidad),
+                ErroresExtraccion = conteos.GetValueOrDefault(EstadoComprobante.ErrorExtraccion),
+                PorEstado = porEstado
             };
         }
 

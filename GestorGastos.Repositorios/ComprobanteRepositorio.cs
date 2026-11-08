@@ -82,6 +82,16 @@ namespace GestorGastos.Repositorios
             return (elementos, total);
         }
 
+        public async Task<Dictionary<EstadoComprobante, int>> ContarPorEstadoAsync(string usuarioId)
+        {
+            return await _context.Comprobantes
+                .AsNoTracking()
+                .Where(c => c.UsuarioId == usuarioId)
+                .GroupBy(c => c.Estado)
+                .Select(g => new { Estado = g.Key, Cantidad = g.Count() })
+                .ToDictionaryAsync(x => x.Estado, x => x.Cantidad);
+        }
+
         public async Task<Comprobante?> ObtenerPorIdAsync(int id)
         {
             return await _context.Comprobantes
