@@ -53,6 +53,35 @@ namespace GestorGastos.Repositorios
             return (elementos, total);
         }
 
+        public async Task<(List<Comprobante> Elementos, int Total)> ListarPorUsuarioAsync(string usuarioId, FiltroMisComprobantesDto filtro, int tamanoPagina)
+        {
+            var query = _context.Comprobantes
+                .AsNoTracking()
+                .Where(c => c.UsuarioId == usuarioId);
+
+            if (!string.IsNullOrWhiteSpace(filtro.Estado)
+                && Enum.TryParse<EstadoComprobante>(filtro.Estado, out var estado))
+            {
+                query = query.Where(c => c.Estado == estado);
+            }
+
+            // El desempate por Id mantiene el orden estable entre páginas cuando dos comprobantes
+            // comparten la misma fecha de carga.
+            query = filtro.Orden == "antiguos"
+                ? query.OrderBy(c => c.FechaCarga).ThenBy(c => c.Id)
+                : query.OrderByDescending(c => c.FechaCarga).ThenByDescending(c => c.Id);
+
+            var total = await query.CountAsync();
+
+            var saltar = (filtro.Pagina - 1) * tamanoPagina;
+            var elementos = await query
+                .Skip(saltar)
+                .Take(tamanoPagina)
+                .ToListAsync();
+
+            return (elementos, total);
+        }
+
         public async Task<Comprobante?> ObtenerPorIdAsync(int id)
         {
             return await _context.Comprobantes

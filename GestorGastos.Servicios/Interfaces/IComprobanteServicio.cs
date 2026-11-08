@@ -5,6 +5,7 @@ namespace GestorGastos.Servicios.Interfaces
     public interface IComprobanteServicio
     {
         Task<PaginadoDto<ComprobanteAdminListadoDto>> ListarAdminAsync(FiltroAdminComprobantesDto filtro);
+        Task<PaginadoDto<ComprobanteListadoDto>> ListarMisComprobantesAsync(string usuarioId, FiltroMisComprobantesDto filtro);
 
         Task<Resultado<CargaRealizadaDto>> CargarAsync(string usuarioId, CargaComprobanteDto datos, Stream contenido);
         Task<Resultado<EstadoComprobanteDto>> ObtenerEstadoAsync(int id, string usuarioId);

@@ -1,0 +1,165 @@
+@using GestorGastos.DTOs
+@model PaginadoDto<ComprobanteListadoDto>
+@{
+    ViewData["Title"] = "Mis comprobantes";
+    var filtro = ViewBag.Filtro as FiltroMisComprobantesDto ?? new FiltroMisComprobantesDto();
+    var sinResultados = Model.TotalRegistros == 0;
+    var desde = ((Model.PaginaActual - 1) * Model.TamanoPagina) + 1;
+    var hasta = Math.Min(Model.PaginaActual * Model.TamanoPagina, Model.TotalRegistros);
+    var hayEliminables = Model.Elementos.Any(c => c.Estado is EstadoComprobante.PendienteRevision or EstadoComprobante.ErrorExtraccion);
+}
+
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
+    <div>
+        <p class="text-body-secondary mb-1">Comprobantes</p>
+        <h1 class="h3 mb-0">Mis comprobantes</h1>
+    </div>
+    <a asp-action="Cargar" class="btn btn-primary">Cargar comprobante</a>
+</div>
+
+<form id="formFiltros" method="get" asp-action="Index" class="row g-2 mb-3">
+    <div class="col-sm-6 col-md-4 col-lg-3">
+        <label for="Estado" class="form-label small text-body-secondary mb-1">Estado</label>
+        <select name="Estado" id="Estado" class="form-select form-select-sm">
+            <option value="">Todos</option>
+            @foreach (var estado in Enum.GetValues<EstadoComprobante>())
+            {
+                var valorEstado = estado.ToString();
+                <option value="@valorEstado" selected="@(filtro.Estado == valorEstado)">@estado.Texto()</option>
+            }
+        </select>
+    </div>
+    <div class="col-sm-6 col-md-4 col-lg-3">
+        <label for="Orden" class="form-label small text-body-secondary mb-1">Orden</label>
+        <select name="Orden" id="Orden" class="form-select form-select-sm">
+            <option value="recientes" selected="@(string.IsNullOrEmpty(filtro.Orden) || filtro.Orden == "recientes")">Más recientes primero</option>
+            <option value="antiguos" selected="@(filtro.Orden == "antiguos")">Más antiguos primero</option>
+        </select>
+    </div>
+</form>
+
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th scope="col">Nombre</th>
+                    <th scope="col">Fecha de carga</th>
+                    <th scope="col" class="text-end">Monto</th>
+                    <th scope="col">Estado</th>
+                    <th scope="col" class="text-end">Acción</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (sinResultados)
+                {
+                    <tr>
+                        <td colspan="5" class="text-center text-body-secondary py-5">
+                            @(string.IsNullOrEmpty(filtro.Estado) ? "No hay comprobantes cargados." : "No hay comprobantes con este estado.")
+                            <a asp-action="Cargar">Cargar comprobante</a>
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    foreach (var comprobante in Model.Elementos)
+                    {
+                        var sePuedeEliminar = comprobante.Estado is EstadoComprobante.PendienteRevision or EstadoComprobante.ErrorExtraccion;
+                        <tr>
+                            <td class="fw-medium">@comprobante.NombreArchivoOriginal</td>
+                            <td>@comprobante.FechaCarga.FechaLocal()</td>
+                            <td class="text-end">@comprobante.Monto.Moneda(comprobante.Moneda)</td>
+                            <td>@await Html.PartialAsync("_BadgeEstado", comprobante.Estado)</td>
+                            <td class="text-end">
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <a asp-action="Detalle" asp-route-id="@comprobante.Id" class="btn btn-outline-secondary" title="Ver detalle">Ver detalle</a>
+                                    @if (sePuedeEliminar)
+                                    {
+                                        <button type="button" class="btn btn-outline-danger"
+                                                data-bs-toggle="modal" data-bs-target="#modal-eliminar"
+                                                data-id="@comprobante.Id" data-nombre="@comprobante.NombreArchivoOriginal">Eliminar</button>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+    <div class="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <span class="small text-body-secondary">
+            @if (sinResultados)
+            {
+                <text>Sin resultados</text>
+            }
+            else
+            {
+                <text>Mostrando @desde–@hasta de @Model.TotalRegistros</text>
+            }
+        </span>
+        <nav aria-label="Paginación">
+            <ul class="pagination pagination-sm mb-0">
+                <li class="page-item @(Model.PaginaActual <= 1 ? "disabled" : string.Empty)">
+                    @if (Model.PaginaActual <= 1)
+                    {
+                        <span class="page-link">Anterior</span>
+                    }
+                    else
+                    {
+                        <a class="page-link" asp-action="Index" asp-route-pagina="@(Model.PaginaActual - 1)" asp-route-estado="@filtro.Estado" asp-route-orden="@filtro.Orden">Anterior</a>
+                    }
+                </li>
+                @for (var numeroPagina = 1; numeroPagina <= Model.TotalPaginas; numeroPagina++)
+                {
+                    <li class="page-item @(Model.PaginaActual == numeroPagina ? "active" : string.Empty)">
+                        @if (Model.PaginaActual == numeroPagina)
+                        {
+                            <span class="page-link" aria-current="page">@numeroPagina</span>
+                        }
+                        else
+                        {
+                            <a class="page-link" asp-action="Index" asp-route-pagina="@numeroPagina" asp-route-estado="@filtro.Estado" asp-route-orden="@filtro.Orden">@numeroPagina</a>
+                        }
+                    </li>
+                }
+                <li class="page-item @(Model.PaginaActual >= Model.TotalPaginas ? "disabled" : string.Empty)">
+                    @if (Model.PaginaActual >= Model.TotalPaginas)
+                    {
+                        <span class="page-link">Siguiente</span>
+                    }
+                    else
+                    {
+                        <a class="page-link" asp-action="Index" asp-route-pagina="@(Model.PaginaActual + 1)" asp-route-estado="@filtro.Estado" asp-route-orden="@filtro.Orden">Siguiente</a>
+                    }
+                </li>
+            </ul>
+        </nav>
+    </div>
+</div>
+
+@if (hayEliminables)
+{
+    <div class="modal fade" id="modal-eliminar" tabindex="-1" aria-labelledby="titulo-modal-eliminar" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title fs-5" id="titulo-modal-eliminar">Eliminar comprobante</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="error-eliminar" class="alert alert-danger d-none" role="alert"></div>
+                    <p class="mb-0">Se va a eliminar <strong id="nombre-eliminar"></strong> y su archivo. Esta acción no se puede deshacer.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" id="confirmar-eliminar" class="btn btn-danger">Eliminar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@section Scripts {
+    <script src="~/js/mis-comprobantes.js" asp-append-version="true"></script>
+}

@@ -6,6 +6,7 @@ namespace GestorGastos.Repositorios.Interfaces
     public interface IComprobanteRepositorio
     {
         Task<(List<Comprobante> Elementos, int Total)> ListarAdminAsync(FiltroAdminComprobantesDto filtro, int tamanoPagina);
+        Task<(List<Comprobante> Elementos, int Total)> ListarPorUsuarioAsync(string usuarioId, FiltroMisComprobantesDto filtro, int tamanoPagina);
         Task<Comprobante?> ObtenerPorIdAsync(int id);
         Task<Comprobante?> ObtenerPorBlobNombreAsync(string blobNombre);
         Task<Comprobante?> ObtenerPorBlobNombreSinSeguimientoAsync(string blobNombre);

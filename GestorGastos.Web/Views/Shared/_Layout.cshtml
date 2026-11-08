@@ -35,7 +35,7 @@
                                 <a class="nav-link @(enDashboard ? "active" : "")" aria-current="@(enDashboard ? "page" : null)" asp-area="" asp-controller="Home" asp-action="Index">Dashboard</a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link @(enMisComprobantes ? "active" : "")" aria-current="@(enMisComprobantes ? "page" : null)" href="/Comprobantes">Mis comprobantes</a>
+                                <a class="nav-link @(enMisComprobantes ? "active" : "")" aria-current="@(enMisComprobantes ? "page" : null)" asp-area="" asp-controller="Comprobantes" asp-action="Index">Mis comprobantes</a>
                             </li>
                             <li class="nav-item">
                                 <a class="nav-link @(enCargar ? "active" : "")" aria-current="@(enCargar ? "page" : null)" asp-area="" asp-controller="Comprobantes" asp-action="Cargar">Cargar</a>
