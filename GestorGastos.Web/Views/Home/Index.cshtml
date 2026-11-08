@@ -1,6 +1,54 @@
+@using GestorGastos.DTOs
+@model ResumenDashboardDto
 @{
     ViewData["Title"] = "Dashboard";
+    var nombre = User.Nombre().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? string.Empty;
+    var textoErrores = Model.ErroresExtraccion == 1
+        ? "Tenés 1 comprobante con error de extracción. Completá monto y descripción para enviarlo a revisión."
+        : $"Tenés {Model.ErroresExtraccion} comprobantes con error de extracción. Completá monto y descripción para enviarlos a revisión.";
 }
 
-<h1 class="h3">Hola, @User.Nombre()</h1>
-<p class="text-body-secondary">El dashboard todavía no está disponible.</p>
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+    <div>
+        <p class="text-body-secondary mb-1">Dashboard</p>
+        <h1 class="h3 mb-0">Hola, @nombre</h1>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+        <a asp-controller="Comprobantes" asp-action="Cargar" class="btn btn-primary">Cargar comprobante</a>
+        <a asp-controller="Comprobantes" asp-action="Index" class="btn btn-outline-secondary">Ver mis comprobantes</a>
+    </div>
+</div>
+
+@if (Model.ErroresExtraccion > 0)
+{
+    <div class="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2" role="alert">
+        <span>@textoErrores</span>
+        <a asp-controller="Comprobantes" asp-action="Index" asp-route-estado="@EstadoComprobante.ErrorExtraccion" class="btn btn-sm btn-warning">Completar ahora</a>
+    </div>
+}
+
+<div class="row g-3">
+    <div class="col-md-5">
+        <div class="card h-100">
+            <div class="card-body d-flex flex-column justify-content-center text-center py-4">
+                <p class="text-uppercase small fw-semibold text-body-secondary mb-1">Documentos abiertos</p>
+                <p class="display-3 fw-semibold mb-1">@Model.DocumentosAbiertos</p>
+                <p class="small text-body-secondary mb-0">Aún no aprobados ni rechazados</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-7">
+        <div class="card h-100">
+            <div class="card-header fw-semibold">Por estado</div>
+            <ul class="list-group list-group-flush">
+                @foreach (var conteo in Model.PorEstado)
+                {
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span class="@conteo.Estado.ClaseBadge()">@conteo.Estado.Texto()</span>
+                        <span class="fw-semibold">@conteo.Cantidad</span>
+                    </li>
+                }
+            </ul>
+        </div>
+    </div>
+</div>
