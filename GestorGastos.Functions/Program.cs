@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 var builder = FunctionsApplication.CreateBuilder(args);
 
@@ -21,6 +22,16 @@ if (!string.IsNullOrEmpty(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_
     builder.Services
         .AddApplicationInsightsTelemetryWorkerService()
         .ConfigureFunctionsApplicationInsights();
+
+    // El SDK 2.x de Application Insights agrega una regla que solo envía logs Warning o mayores;
+    // sin quitarla no llegan los logs Information de extracción y cambios de estado.
+    builder.Logging.Services.Configure<LoggerFilterOptions>(opciones =>
+    {
+        var reglaSoloWarning = opciones.Rules.FirstOrDefault(regla =>
+            regla.ProviderName == "Microsoft.Extensions.Logging.ApplicationInsights.ApplicationInsightsLoggerProvider");
+        if (reglaSoloWarning is not null)
+            opciones.Rules.Remove(reglaSoloWarning);
+    });
 }
 
 builder.Services.AddScoped<IComprobanteRepositorio, ComprobanteRepositorio>();

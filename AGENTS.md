@@ -105,6 +105,10 @@ dotnet user-secrets set "AzureAd:ClientSecret" "<valor>" --project GestorGastos.
   conexión después de la pausa puede fallar o tardar ~1 min.
 - `System.Security.Cryptography.Pkcs` está fijado en `Entidades` para pisar una versión transitiva vulnerable (NU1903).
 - Application Insights se registra solo si `APPLICATIONINSIGHTS_CONNECTION_STRING` no está vacío (web y Function).
+  En la Function, `Microsoft.ApplicationInsights.WorkerService` queda fijado en **2.x** (2.23.0): `Microsoft.Azure.Functions.Worker.ApplicationInsights`
+  usa tipos del SDK 2.x (`ITelemetryInitializer`) y con el 3.x el worker se cae al arrancar (`TypeLoadException`, en el portal
+  "BadGateway from host runtime"). Con el SDK 2.x, `Functions/Program.cs` quita la regla que solo enviaba logs Warning o mayores.
+  En local no se nota porque la connection string está vacía. La web usa `Microsoft.ApplicationInsights.AspNetCore` 3.x sin problema.
 
 ### Configuración (solo nombres; los valores van en User Secrets / App Settings / Key Vault)
 
@@ -338,14 +342,14 @@ Leyenda: ✅ hecho · 🟡 parcial/mock · ❌ no existe. Actualizar en cada PR.
 | P7 | Detalle administración (empleado nombre + email, acciones de estado, sin editar/eliminar) | `Admin/ComprobantesController.Detalle/{id}` | ídem P6 + `archivo` | ✅ Mismo layout que P5: `_VistaPrevia` (preview y descarga), datos con empleado, badges Revisar de descripción y monto, alerta de propio, `_Historial`, y botones de estado (`_BotonesAccionAdmin` + `_ModalesAccionAdmin` + `admin-acciones.js`). El modal de pagar toma `max` = hoy en Argentina (servidor) y `min` = fecha de carga |
 | — | Timeout: Procesando > 5 min → ErrorExtraccion al consultar estado | — | dentro de `GET .../estado` | ✅ `ComprobanteServicio.ObtenerEstadoAsync` (lo usan la API y `Resultado/{id}`): pasa a ErrorExtraccion con "El análisis tardó demasiado…" e historial con `UsuarioId = null` |
 | — | Validación de archivo (extensión, magic bytes, 4 MB, aviso PDF > 2 páginas) | — | — | ✅ `Servicios/ValidadorArchivo` (estático): RN-01 a RN-04 con los mensajes del enunciado; RN-06 cuenta `/Type /Page` sin descomprimir el PDF (si las páginas están en object streams comprimidos no avisa). El cliente replica extensión, tamaño y conteo de páginas |
-| — | Function de extracción (receipt/invoice, idempotente, historial) | — | — | 🟡 `ExtraerComprobanteFunction` + `ExtraccionServicio` + `ExtractorDocumentIntelligence` / `ExtractorDocumentosMock`. Probada en local con `func start` + Azurite (mock, y el extractor real contra un servidor falso con la forma REST de Document Intelligence). Falta probarla en Azure: Document Intelligence real y Event Grid (ver 6) |
+| — | Function de extracción (receipt/invoice, idempotente, historial) | — | — | ✅ `ExtraerComprobanteFunction` + `ExtraccionServicio` + `ExtractorDocumentIntelligence` / `ExtractorDocumentosMock`. Probada en local (mock y Document Intelligence real) y en Azure con Document Intelligence F0 y disparo por Event Grid (2026-11-09) |
 | — | Vista de error genérica (sin detalles técnicos) | `HomeController.Error` | `ProblemDetails` | ✅ Vista `Error` genérica + `UseExceptionHandler` fuera de Development + `AddProblemDetails`; `Resultado<T>` se traduce con `ComoProblema` (API) y `ComoVista` (MVC), ver 3 |
 | — | Almacenamiento de archivos (Blob Storage) | — | — | ✅ `Servicios/AlmacenamientoArchivos` (singleton en web y Function): `SubirAsync` (crea el contenedor si no existe), `EliminarAsync` (`DeleteIfExistsAsync`), `GenerarUrlLecturaAsync` → `UrlArchivoDto` (SAS de lectura de 5 min sobre un blob; con `nombreDescarga` fija `Content-Disposition: attachment`). Lo usan la carga, la eliminación y `GET api/comprobantes/{id}/archivo` (P5/P7). Falta probarlo contra el Storage de Azure (despliegue) |
-| — | Application Insights + logs de 7.6 en web y Function | — | — | ✅ En código: `AddApplicationInsightsTelemetry` (web) y `AddApplicationInsightsTelemetryWorkerService` + `ConfigureFunctionsApplicationInsights` (Function), registrados solo si hay connection string. Logs de carga, inicio/fin de extracción con duración, error de extracción y cada cambio de estado en `ComprobanteServicio` y `ExtraccionServicio`. Sin probar contra un recurso real (depende del despliegue) |
-| — | Despliegue (App Service, Function App, Azure SQL, Storage, Event Grid, DI F0) | — | — | ❌ |
+| — | Application Insights + logs de 7.6 en web y Function | — | — | ✅ `AddApplicationInsightsTelemetry` (web, SDK 3.x) y `AddApplicationInsightsTelemetryWorkerService` + `ConfigureFunctionsApplicationInsights` (Function, SDK 2.x, ver 1), registrados solo si hay connection string. Logs de carga, inicio/fin de extracción con duración, error de extracción y cada cambio de estado; verificados en `appi-gestorgastos` (2026-11-09) |
+| — | Despliegue (App Service, Function App, Azure SQL, Storage, Event Grid, DI F0) | — | — | ✅ Desplegado a mano el 2026-11-09 (`SETUP.md` sección 5): web con `az webapp deploy` (zip), Function con `func azure functionapp publish` (Release), suscripción de Event Grid *Blob Created* al webhook `blobs_extension`. Prueba de punta a punta hecha |
 | — | README (diagrama, recursos, App Registration + App Roles, variables, correr local, desplegar) | — | — | ✅ `README.md` (diagrama Mermaid). El paso a paso del despliegue está en `SETUP.md` sección 5 |
 | — | 2 usuarios de prueba en el tenant (1 Empleado, 1 Administrador) | — | — | ✅ |
-| — | Captura de App Insights con una extracción completa | — | — | ❌ Requiere el despliegue: recurso App Insights + `APPLICATIONINSIGHTS_CONNECTION_STRING` en App Service y Function App + una carga de punta a punta en Azure |
+| — | Captura de App Insights con una extracción completa | — | — | 🟡 Trazas verificadas en Azure; falta guardar la captura para la entrega (consulta en `SETUP.md` 5.7) |
 | — | Opcional: CI/CD (GitHub Actions) web + Function | — | — | 🟡 CI ✅ (compila la solución en push y PR a `main`); falta el despliegue (CD) |
 
 ## 6. Mocks y pendientes de integración
@@ -366,7 +370,7 @@ Pendientes / mocks activos (agregar una fila por cada mock o integración a medi
 
 | Qué | Dónde | TODO |
 |---|---|---|
-| Extracción sin probar en Azure: `ExtractorDocumentIntelligence` con el servicio real y disparo por Event Grid | `Servicios/ExtractorDocumentIntelligence.cs`, `SETUP.md` sección 5 | — |
+| No hay mocks ni integraciones pendientes (2026-11-09) | — | — |
 
 ## 7. Requisitos funcionales (resumen del enunciado)
 
@@ -620,6 +624,8 @@ Los usuarios reales vienen de Entra ID; estos sirven para archivos de ejemplo.
   `AccountKey` `GenerarUrlLecturaAsync` lanza `InvalidOperationException`. Sin
   `Storage:ConnectionString` o `Storage:Contenedor` el constructor también falla, pero recién al resolver el servicio
   (cualquier request que use `ComprobanteServicio`), no al arrancar.
+- La Function App en Flex Consumption tiene un dominio con sufijo (`func-gestorgastos-pw3-<hash>.canadacentral-01.azurewebsites.net`),
+  no `func-gestorgastos-pw3.azurewebsites.net`: el webhook de Event Grid tiene que usar el **Default domain** de **Overview**.
 - El Blob Trigger clásico puede demorar minutos: en Azure usar origen **Event Grid** (criterio "< 1 minuto").
   En local, Azurite no emite eventos de Event Grid: usar el trigger clásico solo en local. El origen depende de la configuración
   de compilación (ver 6), así que a Azure hay que publicar en **Release**: Flex Consumption no admite el trigger clásico.

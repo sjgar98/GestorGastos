@@ -168,23 +168,30 @@ que admite Flex Consumption. Verificar en **Function App → Overview → Functi
 
 ### 5.5 Event Grid
 
-1. Registrar el proveedor (una vez por suscripción): **Subscriptions → (la suscripción) → Settings → Resource providers**,
-   buscar `Microsoft.EventGrid` y, si no dice *Registered*, **Register** (tarda unos minutos).
-2. En `func-gestorgastos-pw3`: **Functions → App keys → System keys**, copiar el valor de `blobs_extension`
-   (existe recién después de publicar la Function).
-3. En `stgestorgastospw3`: **Events → + Event Subscription**:
-   - Name: `blob-comprobantes`. Event Schema: **Event Grid Schema**.
-   - System Topic Name: `stgestorgastospw3-eventos` (si pide uno).
-   - Filter to Event Types: solo **Blob Created**.
-   - Endpoint Type: **Web Hook** → **Configure an endpoint** con:
+1. **Registrar el proveedor** (una vez por suscripción): en **Subscriptions → (la suscripción) → Settings → Resource
+   providers**, buscar `Microsoft.EventGrid` y, si no dice *Registered*, hacer **Register**. Tarda unos minutos.
+2. **Copiar la clave del webhook**: en `func-gestorgastos-pw3`, **Functions → App keys → System keys**, copiar el valor de
+   `blobs_extension`. Existe recién después de publicar la Function.
+3. **Armar la URL del webhook** con el *Default domain* de la Function App (**Overview**; Flex Consumption le agrega un
+   sufijo al nombre) y la clave del paso 2:
 
-     ```text
-     https://func-gestorgastos-pw3.azurewebsites.net/runtime/webhooks/blobs?functionName=Host.Functions.ExtraerComprobanteFunction&code=<blobs_extension>
-     ```
+   ```text
+   https://func-gestorgastos-pw3-b4awdah7g9fca0a0.canadacentral-01.azurewebsites.net/runtime/webhooks/blobs?functionName=Host.Functions.ExtraerComprobanteFunction&code=<blobs_extension>
+   ```
 
-     (cambiar el dominio si **Overview → Default domain** de la Function App es otro).
-   - Pestaña **Filters → Enable subject filtering**: *Subject Begins With* `/blobServices/default/containers/comprobantes/`.
-   - **Create**. Si falla la validación del endpoint, revisar que la Function esté publicada y que el `code` sea el de `blobs_extension`.
+4. **Crear la suscripción**: en `stgestorgastospw3`, **Events → + Event Subscription**, y completar:
+
+   | Campo | Valor |
+   |---|---|
+   | Name | `blob-comprobantes` |
+   | Event Schema | Event Grid Schema |
+   | System Topic Name | `stgestorgastospw3-eventos` (si lo pide) |
+   | Filter to Event Types | Solo **Blob Created** |
+   | Endpoint Type | **Web Hook** → **Configure an endpoint**, con la URL del paso 3 |
+   | Pestaña **Filters** | Tildar **Enable subject filtering**; en *Subject Begins With*: `/blobServices/default/containers/comprobantes/` |
+
+5. **Create**. Si falla la validación del endpoint, revisar que la Function esté publicada y que el `code` de la URL sea el
+   de `blobs_extension`.
 
 ### 5.6 Prueba de punta a punta
 
@@ -245,6 +252,7 @@ Function. No es obligatorio para la entrega.
 | La web en Azure no conecta a SQL | Falta **Allow Azure services** en el firewall del servidor |
 | Error 500 en la web en Azure al arrancar | Falta algún App Setting (`AzureAd__*`, `Storage__*`, `ConnectionStrings__GestorGastos`): ver **Log stream** |
 | "No se pudo cargar la vista previa" en Azure | `Storage__ConnectionString` sin `AccountKey` (no se pueden firmar SAS) |
+| "Encountered an error (BadGateway) from host runtime" en la Function App | El worker se cae al arrancar: ver los `traces` de App Insights (p. ej. `TypeLoadException` por mezclar el SDK 3.x de Application Insights con `Microsoft.Azure.Functions.Worker.ApplicationInsights`) |
 | Los comprobantes quedan en Procesando en Azure | Falta la suscripción de Event Grid, la Function se publicó en Debug o el `code` del webhook no es `blobs_extension` |
 | `dotnet ef` no conecta a Azure SQL | La IP actual no está en el firewall |
 | La base no responde a fin de mes | Se agotó el cupo gratuito mensual y quedó pausada hasta el mes siguiente |
