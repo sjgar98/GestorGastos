@@ -15,7 +15,7 @@ namespace GestorGastos.DTOs.Validaciones
             if (value is not DateOnly fecha)
                 return true;
 
-            var hoyEnArgentina = DateOnly.FromDateTime(DateTime.UtcNow.ConvertirAArgentina());
+            var hoyEnArgentina = FechaHelper.HoyEnArgentina();
             return fecha <= hoyEnArgentina;
         }
     }

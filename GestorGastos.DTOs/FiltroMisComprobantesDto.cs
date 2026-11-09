@@ -1,8 +1,10 @@
+using GestorGastos.DTOs.Enums;
+
 namespace GestorGastos.DTOs
 {
     public class FiltroMisComprobantesDto
     {
-        public string? Estado { get; set; }
+        public EstadoComprobante? Estado { get; set; }
         public string? Orden { get; set; } = "recientes";
         public int Pagina { get; set; } = 1;
     }

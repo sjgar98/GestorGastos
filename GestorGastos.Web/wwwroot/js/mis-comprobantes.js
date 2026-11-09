@@ -1,67 +1,44 @@
 (function () {
     "use strict";
 
-    const formulario = document.getElementById("formFiltros");
-    if (!formulario) {
-        return;
+    const INTERVALO_CONSULTA_MS = 3000;
+    const ESPERA_MAXIMA_MS = 2 * 60 * 1000;
+
+    function crearBadge(estado) {
+        const badge = document.createElement("span");
+        badge.className = estado.claseBadge;
+        badge.textContent = estado.estadoTexto;
+        return badge;
     }
 
-    formulario.querySelectorAll("select").forEach(function (select) {
-        select.addEventListener("change", function () {
-            formulario.submit();
-        });
-    });
-})();
-
-(function () {
-    "use strict";
-
-    const modal = document.getElementById("modal-eliminar");
-    if (!modal) {
-        return;
+    function actualizarFila(fila, estado) {
+        fila.querySelector('[data-celda="estado"]').replaceChildren(crearBadge(estado));
+        fila.querySelector('[data-celda="monto"]').textContent = estado.montoTexto;
+        const botonEliminar = fila.querySelector('[data-bs-target="#modal-eliminar"]');
+        if (botonEliminar) {
+            botonEliminar.hidden = !estado.editable;
+        }
     }
 
-    const nombre = document.getElementById("nombre-eliminar");
-    const botonConfirmar = document.getElementById("confirmar-eliminar");
-    const cuadroError = document.getElementById("error-eliminar");
-    let comprobanteId = null;
+    function seguirFila(fila) {
+        const inicio = Date.now();
 
-    function mostrarError(mensaje) {
-        cuadroError.textContent = mensaje;
-        cuadroError.classList.remove("d-none");
-    }
-
-    function tokenAntiforgery() {
-        return document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? "";
-    }
-
-    modal.addEventListener("show.bs.modal", function (evento) {
-        comprobanteId = evento.relatedTarget.dataset.id;
-        nombre.textContent = evento.relatedTarget.dataset.nombre;
-        cuadroError.classList.add("d-none");
-    });
-
-    botonConfirmar.addEventListener("click", async function () {
-        botonConfirmar.disabled = true;
-        cuadroError.classList.add("d-none");
-
-        try {
-            const respuesta = await fetch(`/api/comprobantes/${comprobanteId}`, {
-                method: "DELETE",
-                headers: { RequestVerificationToken: tokenAntiforgery() }
-            });
-
-            if (respuesta.status === 204) {
-                location.reload();
+        async function consultar() {
+            if (Date.now() - inicio >= ESPERA_MAXIMA_MS) {
                 return;
             }
 
-            const problema = await respuesta.json().catch(() => null);
-            mostrarError(problema?.detail || "No se pudo eliminar el comprobante.");
-        } catch {
-            mostrarError("No se pudo conectar con el servidor. Revisá tu conexión e intentá de nuevo.");
+            const respuesta = await window.GestorGastos.enviar(`/api/comprobantes/${fila.dataset.id}/estado`);
+            if (respuesta.ok && respuesta.datos.estado !== "Procesando") {
+                actualizarFila(fila, respuesta.datos);
+                return;
+            }
+
+            setTimeout(consultar, INTERVALO_CONSULTA_MS);
         }
 
-        botonConfirmar.disabled = false;
-    });
+        setTimeout(consultar, INTERVALO_CONSULTA_MS);
+    }
+
+    document.querySelectorAll("tr[data-procesando]").forEach(seguirFila);
 })();

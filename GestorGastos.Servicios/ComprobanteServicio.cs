@@ -23,6 +23,7 @@ namespace GestorGastos.Servicios
         private const decimal MontoMaximo = 99_999_999.99m;
         private const int LargoMaximoComercio = 200;
         private const int LargoMaximoTexto = 500;
+        private const int LargoMinimoMotivo = 10;
         private static readonly EstadoComprobante[] EstadosAbiertos =
         {
             EstadoComprobante.Procesando,
@@ -56,7 +57,7 @@ namespace GestorGastos.Servicios
                 NombreArchivoOriginal = c.NombreArchivoOriginal,
                 FechaCarga = c.FechaCarga,
                 Monto = c.Monto,
-                Moneda = c.Moneda.ToString(),
+                Moneda = c.Moneda,
                 Estado = c.Estado
             }).ToList();
 
@@ -81,7 +82,7 @@ namespace GestorGastos.Servicios
                 NombreArchivoOriginal = c.NombreArchivoOriginal,
                 FechaCarga = c.FechaCarga,
                 Monto = c.Monto,
-                Moneda = c.Moneda?.ToString(),
+                Moneda = c.Moneda,
                 Estado = c.Estado
             }).ToList();
 
@@ -316,91 +317,54 @@ namespace GestorGastos.Servicios
             return Resultado<bool>.Exito(true);
         }
 
-        public async Task<Resultado<ComprobanteAdminDetalleDto>> ObtenerAdminDetalleAsync(int id, string adminId)
+        public async Task<Resultado<ComprobanteAdminDetalleDto>> ObtenerAdminDetalleAsync(int id)
         {
-            var comprobante = await _comprobanteRepositorio.ObtenerPorIdConUsuarioAsync(id);
+            var comprobante = await _comprobanteRepositorio.ObtenerPorIdAsync(id);
             if (comprobante is null)
-                return Resultado<ComprobanteAdminDetalleDto>.Fallo(TipoError.NoEncontrado, "El comprobante no existe.");
+                return Resultado<ComprobanteAdminDetalleDto>.Fallo(TipoError.NoEncontrado, MensajeNoEncontrado);
 
-            return Resultado<ComprobanteAdminDetalleDto>.Exito(AAdminDetalleDto(comprobante, adminId));
+            return Resultado<ComprobanteAdminDetalleDto>.Exito(AAdminDetalleDto(comprobante));
         }
 
         public async Task<Resultado<CambioEstadoRespuestaDto>> TomarEnRevisionAsync(int id, string adminId)
         {
-            return await CambiarEstadoAsync(
-                id,
-                adminId,
-                EstadoComprobante.PendienteRevision,
-                EstadoComprobante.EnRevision,
-                observacion: null,
-                fechaPago: null);
+            return await CambiarEstadoAsync(id, adminId, EstadoComprobante.PendienteRevision, EstadoComprobante.EnRevision);
         }
 
         public async Task<Resultado<CambioEstadoRespuestaDto>> AprobarAsync(int id, string adminId)
         {
-            return await CambiarEstadoAsync(
-                id,
-                adminId,
-                EstadoComprobante.EnRevision,
-                EstadoComprobante.Aprobado,
-                observacion: null,
-                fechaPago: null);
+            return await CambiarEstadoAsync(id, adminId, EstadoComprobante.EnRevision, EstadoComprobante.Aprobado);
         }
 
         public async Task<Resultado<CambioEstadoRespuestaDto>> RechazarAsync(int id, string adminId, string motivo)
         {
-            if (string.IsNullOrWhiteSpace(motivo) || motivo.Length < 10 || motivo.Length > 500)
-                return Resultado<CambioEstadoRespuestaDto>.Fallo(TipoError.Invalido, "Escribí un motivo de entre 10 y 500 caracteres.");
+            var motivoRecortado = motivo?.Trim() ?? string.Empty;
 
-            return await CambiarEstadoAsync(
-                id,
-                adminId,
-                EstadoComprobante.EnRevision,
-                EstadoComprobante.Rechazado,
-                observacion: motivo,
-                fechaPago: null);
+            return await CambiarEstadoAsync(id, adminId, EstadoComprobante.EnRevision, EstadoComprobante.Rechazado, motivoRecortado,
+                comprobante =>
+                {
+                    if (motivoRecortado.Length < LargoMinimoMotivo || motivoRecortado.Length > LargoMaximoTexto)
+                        return "Escribí un motivo de entre 10 y 500 caracteres.";
+
+                    comprobante.MotivoRechazo = motivoRecortado;
+                    return null;
+                });
         }
 
         public async Task<Resultado<CambioEstadoRespuestaDto>> MarcarPagadoAsync(int id, string adminId, DateOnly fechaPago)
         {
-            var comprobante = await _comprobanteRepositorio.ObtenerPorIdConUsuarioAsync(id);
-            if (comprobante is null)
-                return Resultado<CambioEstadoRespuestaDto>.Fallo(TipoError.NoEncontrado, "El comprobante no existe.");
+            return await CambiarEstadoAsync(id, adminId, EstadoComprobante.Aprobado, EstadoComprobante.Pagado, $"Fecha de pago: {fechaPago:dd/MM/yyyy}",
+                comprobante =>
+                {
+                    if (fechaPago > FechaHelper.HoyEnArgentina())
+                        return "La fecha de pago no puede ser futura.";
 
-            if (comprobante.UsuarioId == adminId)
-                return Resultado<CambioEstadoRespuestaDto>.Fallo(TipoError.Prohibido, "No podés cambiar el estado de tu propio comprobante.");
+                    if (fechaPago < DateOnly.FromDateTime(comprobante.FechaCarga.ConvertirAArgentina()))
+                        return "La fecha de pago no puede ser anterior a la fecha de carga.";
 
-            if (comprobante.Estado != EstadoComprobante.Aprobado)
-                return Resultado<CambioEstadoRespuestaDto>.Fallo(TipoError.Conflicto, "Solo se puede marcar como pagado un comprobante aprobado.");
-
-            var hoy = DateOnly.FromDateTime(DateTime.UtcNow.ConvertirAArgentina());
-            var fechaCargaLocal = DateOnly.FromDateTime(comprobante.FechaCarga.ConvertirAArgentina());
-
-            if (fechaPago > hoy)
-                return Resultado<CambioEstadoRespuestaDto>.Fallo(TipoError.Invalido, "La fecha de pago no puede ser futura.");
-
-            if (fechaPago < fechaCargaLocal)
-                return Resultado<CambioEstadoRespuestaDto>.Fallo(TipoError.Invalido, "La fecha de pago no puede ser anterior a la fecha de carga.");
-
-            comprobante.Estado = EstadoComprobante.Pagado;
-            comprobante.FechaPago = fechaPago.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified).ToUniversalTime();
-
-            var historial = new HistorialEstado
-            {
-                ComprobanteId = comprobante.Id,
-                EstadoAnterior = EstadoComprobante.Aprobado,
-                EstadoNuevo = EstadoComprobante.Pagado,
-                UsuarioId = adminId,
-                Fecha = DateTime.UtcNow,
-                Observacion = $"Fecha de pago: {fechaPago:dd/MM/yyyy}"
-            };
-            comprobante.Historial.Add(historial);
-
-            await _comprobanteRepositorio.GuardarCambiosAsync();
-            _logger.LogInformation("Comprobante {ComprobanteId} pasó de {Anterior} a {Nuevo}",
-                comprobante.Id, EstadoComprobante.Aprobado, EstadoComprobante.Pagado);
-
-            return Resultado<CambioEstadoRespuestaDto>.Exito(ACambioEstadoDto(comprobante));
+                    comprobante.FechaPago = fechaPago.InicioDelDiaArgentinaEnUtc();
+                    return null;
+                });
         }
 
         public async Task<Resultado<UrlArchivoDto>> ObtenerUrlArchivoAsync(int comprobanteId, string usuarioId, bool esAdministrador, bool descarga)
@@ -409,7 +373,7 @@ namespace GestorGastos.Servicios
 
             if (comprobante == null || (!esAdministrador && comprobante.UsuarioId != usuarioId))
             {
-                return Resultado<UrlArchivoDto>.Fallo(TipoError.NoEncontrado, "El comprobante no existe.");
+                return Resultado<UrlArchivoDto>.Fallo(TipoError.NoEncontrado, MensajeNoEncontrado);
             }
 
             var nombreDescarga = descarga ? comprobante.NombreArchivoOriginal : null;
@@ -418,8 +382,6 @@ namespace GestorGastos.Servicios
 
             return Resultado<UrlArchivoDto>.Exito(url);
         }
-
-        // ── Helpers privados ──────────────────────────────────────────────────────
 
         private static bool EsEditablePorElDuenio(EstadoComprobante estado)
         {
@@ -437,7 +399,7 @@ namespace GestorGastos.Servicios
 
         private static DateOnly? DescartarFechaFutura(DateOnly? fecha)
         {
-            var hoy = DateOnly.FromDateTime(DateTime.UtcNow.ConvertirAArgentina());
+            var hoy = FechaHelper.HoyEnArgentina();
             return fecha > hoy ? null : fecha;
         }
 
@@ -484,14 +446,17 @@ namespace GestorGastos.Servicios
             {
                 Id = c.Id,
                 NombreArchivoOriginal = c.NombreArchivoOriginal,
+                ContentType = c.ContentType,
                 Estado = c.Estado,
                 EstadoTexto = c.Estado.Texto(),
+                ClaseBadge = c.Estado.ClaseBadge(),
                 TipoDocumento = c.TipoDocumento,
                 Categoria = c.Categoria,
                 Comercio = c.Comercio,
                 FechaComprobante = c.FechaComprobante,
                 Descripcion = c.Descripcion,
                 Monto = c.Monto,
+                MontoTexto = c.Monto.Moneda(c.Moneda),
                 Moneda = c.Moneda,
                 ConfianzaDescripcion = c.ConfianzaDescripcion,
                 ConfianzaMonto = c.ConfianzaMonto,
@@ -505,59 +470,44 @@ namespace GestorGastos.Servicios
             string adminId,
             EstadoComprobante estadoEsperado,
             EstadoComprobante estadoNuevo,
-            string? observacion,
-            DateOnly? fechaPago)
+            string? observacion = null,
+            Func<Comprobante, string?>? validarYAplicar = null)
         {
             var comprobante = await _comprobanteRepositorio.ObtenerPorIdAsync(id);
             if (comprobante is null)
-                return Resultado<CambioEstadoRespuestaDto>.Fallo(TipoError.NoEncontrado, "El comprobante no existe.");
+                return Resultado<CambioEstadoRespuestaDto>.Fallo(TipoError.NoEncontrado, MensajeNoEncontrado);
 
             if (comprobante.UsuarioId == adminId)
                 return Resultado<CambioEstadoRespuestaDto>.Fallo(TipoError.Prohibido, "No podés cambiar el estado de tu propio comprobante.");
 
             if (comprobante.Estado != estadoEsperado)
-                return Resultado<CambioEstadoRespuestaDto>.Fallo(TipoError.Conflicto, $"El comprobante no está en estado {estadoEsperado}.");
+                return Resultado<CambioEstadoRespuestaDto>.Fallo(TipoError.Conflicto,
+                    $"El comprobante ya no está {estadoEsperado.Texto()}: la acción no se puede aplicar.");
 
-            var estadoAnterior = comprobante.Estado;
-            comprobante.Estado = estadoNuevo;
+            var errorValidacion = validarYAplicar?.Invoke(comprobante);
+            if (errorValidacion is not null)
+                return Resultado<CambioEstadoRespuestaDto>.Fallo(TipoError.Invalido, errorValidacion);
 
-            if (estadoNuevo == EstadoComprobante.Rechazado)
-                comprobante.MotivoRechazo = observacion;
-
-            var historial = new HistorialEstado
-            {
-                ComprobanteId = comprobante.Id,
-                EstadoAnterior = estadoAnterior,
-                EstadoNuevo = estadoNuevo,
-                UsuarioId = adminId,
-                Fecha = DateTime.UtcNow,
-                Observacion = observacion
-            };
-            comprobante.Historial.Add(historial);
-
+            RegistrarCambioEstado(comprobante, estadoNuevo, adminId, observacion);
             await _comprobanteRepositorio.GuardarCambiosAsync();
-            _logger.LogInformation("Comprobante {ComprobanteId} pasó de {Anterior} a {Nuevo}",
-                comprobante.Id, estadoAnterior, estadoNuevo);
 
             return Resultado<CambioEstadoRespuestaDto>.Exito(ACambioEstadoDto(comprobante));
         }
 
-        private static ComprobanteAdminDetalleDto AAdminDetalleDto(Comprobante c, string adminId)
+        private static ComprobanteAdminDetalleDto AAdminDetalleDto(Comprobante c)
         {
             return new ComprobanteAdminDetalleDto
             {
                 Id = c.Id,
                 NombreArchivoOriginal = c.NombreArchivoOriginal,
-                BlobNombre = c.BlobNombre,
                 ContentType = c.ContentType,
-                TamanioBytes = c.TamanioBytes,
                 TipoDocumento = c.TipoDocumento,
                 Categoria = c.Categoria,
                 Comercio = c.Comercio,
                 FechaComprobante = c.FechaComprobante,
                 Descripcion = c.Descripcion,
                 Monto = c.Monto,
-                Moneda = c.Moneda?.ToString(),
+                Moneda = c.Moneda,
                 ConfianzaDescripcion = c.ConfianzaDescripcion,
                 ConfianzaMonto = c.ConfianzaMonto,
                 EditadoManualmente = c.EditadoManualmente,
@@ -569,18 +519,23 @@ namespace GestorGastos.Servicios
                 EmpleadoId = c.Usuario?.Id ?? c.UsuarioId,
                 EmpleadoNombre = c.Usuario?.Nombre ?? string.Empty,
                 EmpleadoEmail = c.Usuario?.Email ?? string.Empty,
-                Historial = c.Historial
-                    .OrderByDescending(h => h.Fecha)
-                    .Select(h => new HistorialEstadoDto
-                    {
-                        EstadoAnterior = h.EstadoAnterior,
-                        EstadoNuevo = h.EstadoNuevo,
-                        Fecha = h.Fecha,
-                        UsuarioNombre = h.UsuarioId is null ? null : h.Usuario?.Nombre,
-                        Observacion = h.Observacion
-                    })
-                    .ToList()
+                Historial = AHistorialDto(c.Historial)
             };
+        }
+
+        private static List<HistorialEstadoDto> AHistorialDto(IEnumerable<HistorialEstado> historial)
+        {
+            return historial
+                .OrderByDescending(h => h.Fecha)
+                .Select(h => new HistorialEstadoDto
+                {
+                    EstadoAnterior = h.EstadoAnterior,
+                    EstadoNuevo = h.EstadoNuevo,
+                    Fecha = h.Fecha,
+                    UsuarioNombre = h.Usuario?.Nombre,
+                    Observacion = h.Observacion
+                })
+                .ToList();
         }
 
         private static CambioEstadoRespuestaDto ACambioEstadoDto(Comprobante c)
@@ -599,7 +554,7 @@ namespace GestorGastos.Servicios
 
             if (comprobante == null || comprobante.UsuarioId != usuarioId)
             {
-                return Resultado<ComprobanteDetalleDto>.Fallo(TipoError.NoEncontrado, "El comprobante no existe.");
+                return Resultado<ComprobanteDetalleDto>.Fallo(TipoError.NoEncontrado, MensajeNoEncontrado);
             }
 
             return Resultado<ComprobanteDetalleDto>.Exito(ADto(comprobante));
@@ -625,17 +580,7 @@ namespace GestorGastos.Servicios
                 FechaCarga = comprobante.FechaCarga,
                 FechaPago = comprobante.FechaPago,
                 EditadoManualmente = comprobante.EditadoManualmente,
-                Historial = comprobante.Historial
-                    .OrderByDescending(h => h.Fecha)
-                    .Select(h => new HistorialEstadoDto
-                    {
-                        EstadoAnterior = h.EstadoAnterior,
-                        EstadoNuevo = h.EstadoNuevo,
-                        Fecha = h.Fecha,
-                        UsuarioNombre = h.Usuario?.Nombre,
-                        Observacion = h.Observacion
-                    })
-                    .ToList()
+                Historial = AHistorialDto(comprobante.Historial)
             };
         }
     }

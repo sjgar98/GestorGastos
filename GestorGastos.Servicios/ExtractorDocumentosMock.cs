@@ -31,7 +31,7 @@ namespace GestorGastos.Servicios
             return new DatosExtraidos
             {
                 Comercio = esFactura ? "Hotel Córdoba S.A." : "Taxi Ezeiza SRL",
-                FechaComprobante = DateOnly.FromDateTime(DateTime.UtcNow.ConvertirAArgentina()),
+                FechaComprobante = FechaHelper.HoyEnArgentina(),
                 Descripcion = esFactura ? "Alojamiento 2 noches; Desayuno" : "Viaje al aeropuerto",
                 Monto = esFactura ? 142300m : 18450m,
                 Moneda = Moneda.ARS,

@@ -11,7 +11,7 @@ namespace GestorGastos.DTOs
         public string NombreArchivoOriginal { get; set; } = string.Empty;
         public DateTime FechaCarga { get; set; }
         public decimal? Monto { get; set; }
-        public string? Moneda { get; set; }
+        public Moneda? Moneda { get; set; }
         public EstadoComprobante Estado { get; set; }
     }
 }

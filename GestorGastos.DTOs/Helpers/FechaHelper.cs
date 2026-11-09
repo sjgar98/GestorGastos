@@ -12,6 +12,23 @@ namespace GestorGastos.DTOs.Helpers
                 _zonaArgentina);
         }
 
+        public static DateOnly HoyEnArgentina()
+        {
+            return DateOnly.FromDateTime(DateTime.UtcNow.ConvertirAArgentina());
+        }
+
+        public static DateTime InicioDelDiaArgentinaEnUtc(this DateOnly fecha)
+        {
+            return TimeZoneInfo.ConvertTimeToUtc(
+                fecha.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified),
+                _zonaArgentina);
+        }
+
+        public static string FechaLocal(this DateOnly? fecha)
+        {
+            return fecha?.ToString("dd/MM/yyyy") ?? "—";
+        }
+
         public static string FechaLocal(this DateTime fechaUtc)
         {
             return fechaUtc.ConvertirAArgentina().ToString("dd/MM/yyyy");

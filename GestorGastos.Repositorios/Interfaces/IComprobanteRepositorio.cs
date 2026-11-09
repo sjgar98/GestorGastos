@@ -15,6 +15,5 @@ namespace GestorGastos.Repositorios.Interfaces
         Task AgregarAsync(Comprobante comprobante);
         void Eliminar(Comprobante comprobante);
         Task GuardarCambiosAsync();
-        Task<Comprobante?> ObtenerPorIdConUsuarioAsync(int id);
     }
 }

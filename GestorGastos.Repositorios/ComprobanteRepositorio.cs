@@ -1,14 +1,15 @@
-using GestorGastos.DTOs.Enums;
-using Microsoft.EntityFrameworkCore;
 using GestorGastos.DTOs;
+using GestorGastos.DTOs.Enums;
 using GestorGastos.Entidades;
 using GestorGastos.Repositorios.Interfaces;
-using System.Diagnostics;
+using Microsoft.EntityFrameworkCore;
 
 namespace GestorGastos.Repositorios
 {
     public class ComprobanteRepositorio : IComprobanteRepositorio
     {
+        private const string OrdenAntiguos = "antiguos";
+
         private readonly GestorGastosDbContext _context;
 
         public ComprobanteRepositorio(GestorGastosDbContext contexto)
@@ -19,38 +20,14 @@ namespace GestorGastos.Repositorios
         public async Task<(List<Comprobante> Elementos, int Total)> ListarAdminAsync(FiltroAdminComprobantesDto filtro, int tamanoPagina)
         {
             var query = _context.Comprobantes
-                .Include(c => c.Usuario)
                 .AsNoTracking()
+                .Include(c => c.Usuario)
                 .AsQueryable();
 
-            if (!string.IsNullOrWhiteSpace(filtro.Estado))
-            {
-                if (Enum.TryParse<EstadoComprobante>(filtro.Estado, out var estadoEnum))
-                {
-                    query = query.Where(c => c.Estado == estadoEnum);
-                }
-            }
-
-            // Filtro por Empleado específico
             if (!string.IsNullOrEmpty(filtro.EmpleadoId))
-            {
                 query = query.Where(c => c.UsuarioId == filtro.EmpleadoId);
-            }
 
-            // Ordenamiento por Fecha de Carga
-            query = filtro.Orden == "antiguos"
-                ? query.OrderBy(c => c.FechaCarga)
-                : query.OrderByDescending(c => c.FechaCarga);
-
-            var total = await query.CountAsync();
-
-            var saltar = (filtro.Pagina - 1) * tamanoPagina;
-            var elementos = await query
-                .Skip(saltar)
-                .Take(tamanoPagina)
-                .ToListAsync();
-
-            return (elementos, total);
+            return await FiltrarOrdenarYPaginarAsync(query, filtro.Estado, filtro.Orden, filtro.Pagina, tamanoPagina);
         }
 
         public async Task<(List<Comprobante> Elementos, int Total)> ListarPorUsuarioAsync(string usuarioId, FiltroMisComprobantesDto filtro, int tamanoPagina)
@@ -59,27 +36,7 @@ namespace GestorGastos.Repositorios
                 .AsNoTracking()
                 .Where(c => c.UsuarioId == usuarioId);
 
-            if (!string.IsNullOrWhiteSpace(filtro.Estado)
-                && Enum.TryParse<EstadoComprobante>(filtro.Estado, out var estado))
-            {
-                query = query.Where(c => c.Estado == estado);
-            }
-
-            // El desempate por Id mantiene el orden estable entre páginas cuando dos comprobantes
-            // comparten la misma fecha de carga.
-            query = filtro.Orden == "antiguos"
-                ? query.OrderBy(c => c.FechaCarga).ThenBy(c => c.Id)
-                : query.OrderByDescending(c => c.FechaCarga).ThenByDescending(c => c.Id);
-
-            var total = await query.CountAsync();
-
-            var saltar = (filtro.Pagina - 1) * tamanoPagina;
-            var elementos = await query
-                .Skip(saltar)
-                .Take(tamanoPagina)
-                .ToListAsync();
-
-            return (elementos, total);
+            return await FiltrarOrdenarYPaginarAsync(query, filtro.Estado, filtro.Orden, filtro.Pagina, tamanoPagina);
         }
 
         public async Task<Dictionary<EstadoComprobante, int>> ContarPorEstadoAsync(string usuarioId)
@@ -95,6 +52,7 @@ namespace GestorGastos.Repositorios
         public async Task<Comprobante?> ObtenerPorIdAsync(int id)
         {
             return await _context.Comprobantes
+                .Include(c => c.Usuario)
                 .Include(c => c.Historial)
                     .ThenInclude(h => h.Usuario)
                 .FirstOrDefaultAsync(c => c.Id == id);
@@ -129,13 +87,25 @@ namespace GestorGastos.Repositorios
             await _context.SaveChangesAsync();
         }
 
-        public async Task<Comprobante?> ObtenerPorIdConUsuarioAsync(int id)
+        private static async Task<(List<Comprobante> Elementos, int Total)> FiltrarOrdenarYPaginarAsync(
+            IQueryable<Comprobante> query, EstadoComprobante? estado, string? orden, int pagina, int tamanoPagina)
         {
-            return await _context.Comprobantes
-                .Include(c => c.Usuario)
-                .Include(c => c.Historial)
-                    .ThenInclude(h => h.Usuario)
-                .FirstOrDefaultAsync(c => c.Id == id);
+            if (estado is not null)
+                query = query.Where(c => c.Estado == estado);
+
+            // El desempate por Id mantiene el orden estable entre páginas cuando dos comprobantes
+            // comparten la misma fecha de carga.
+            query = orden == OrdenAntiguos
+                ? query.OrderBy(c => c.FechaCarga).ThenBy(c => c.Id)
+                : query.OrderByDescending(c => c.FechaCarga).ThenByDescending(c => c.Id);
+
+            var total = await query.CountAsync();
+            var elementos = await query
+                .Skip((pagina - 1) * tamanoPagina)
+                .Take(tamanoPagina)
+                .ToListAsync();
+
+            return (elementos, total);
         }
     }
 }

@@ -1,53 +1,29 @@
-﻿@using System.Globalization
-@using Microsoft.AspNetCore.Mvc.ModelBinding
-@using GestorGastos.DTOs.Enums
 @model DetalleComprobanteViewModel
 @{
     var c = Model.Comprobante;
     ViewData["Title"] = c.NombreArchivoOriginal;
-    var puedeModificar = c.Estado == EstadoComprobante.PendienteRevision
-        || c.Estado == EstadoComprobante.ErrorExtraccion;
+    var puedeModificar = c.Estado is EstadoComprobante.PendienteRevision or EstadoComprobante.ErrorExtraccion;
     var estaEnError = c.Estado == EstadoComprobante.ErrorExtraccion;
     var mostrarFormulario = estaEnError || !ViewData.ModelState.IsValid;
-    var hoyArgentina = DateOnly.FromDateTime(DateTime.UtcNow.ConvertirAArgentina()).ToString("yyyy-MM-dd");
-    const string mensajeMonto = "Ingresá un monto mayor a 0, con hasta 2 decimales.";
-    string ClaseInvalida(string campo) =>
-        ViewData.ModelState.GetFieldValidationState(campo) == ModelValidationState.Invalid ? "is-invalid" : string.Empty;
 }
 
 <nav aria-label="breadcrumb">
     <ol class="breadcrumb">
-        <li class="breadcrumb-item"><a href="/Comprobantes">Mis comprobantes</a></li>
+        <li class="breadcrumb-item"><a asp-action="Index">Mis comprobantes</a></li>
         <li class="breadcrumb-item active" aria-current="page">@c.NombreArchivoOriginal</li>
     </ol>
 </nav>
 
-@if (TempData["MensajeExito"] is string mensajeExito)
-{
-    <div class="alert alert-success" role="status">@mensajeExito</div>
-}
-
 <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
 
-<h1 class="h2 mb-4">
-    @c.NombreArchivoOriginal
-    <span class="@c.Estado.ClaseBadge() fs-6 align-middle">@c.Estado.Texto()</span>
-</h1>
+<div class="d-flex flex-wrap align-items-center gap-2 mb-4">
+    <h1 class="h2 mb-0 text-break">@c.NombreArchivoOriginal</h1>
+    <partial name="_BadgeEstado" model="c.Estado" />
+</div>
 
 <div class="row g-4">
     <div class="col-lg-7">
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <span class="fw-semibold">Vista previa</span>
-                <button type="button" id="boton-descargar" class="btn btn-sm btn-outline-secondary" disabled>Descargar</button>
-            </div>
-            <div id="vista-previa"
-                 class="vista-previa bg-body-secondary d-flex align-items-center justify-content-center text-muted"
-                 data-comprobante-id="@c.Id"
-                 data-content-type="@c.ContentType">
-                Cargando vista previa…
-            </div>
-        </div>
+        <partial name="_VistaPrevia" model="(c.Id, c.ContentType)" />
     </div>
 
     <div class="col-lg-5">
@@ -74,39 +50,39 @@
                 }
 
                 <dl class="row mb-0">
-                    <dt class="col-sm-5 fw-normal text-muted">Archivo</dt>
-                    <dd class="col-sm-7">@c.NombreArchivoOriginal</dd>
+                    <dt class="col-sm-5 fw-normal text-body-secondary">Archivo</dt>
+                    <dd class="col-sm-7 text-break">@c.NombreArchivoOriginal</dd>
 
-                    <dt class="col-sm-5 fw-normal text-muted">Tipo</dt>
+                    <dt class="col-sm-5 fw-normal text-body-secondary">Tipo</dt>
                     <dd class="col-sm-7">@c.TipoDocumento.Texto()</dd>
 
-                    <dt class="col-sm-5 fw-normal text-muted">Categoría</dt>
+                    <dt class="col-sm-5 fw-normal text-body-secondary">Categoría</dt>
                     <dd class="col-sm-7">@c.Categoria.Texto()</dd>
 
-                    <dt class="col-sm-5 fw-normal text-muted">Comercio</dt>
+                    <dt class="col-sm-5 fw-normal text-body-secondary">Comercio</dt>
                     <dd class="col-sm-7">@(string.IsNullOrWhiteSpace(c.Comercio) ? "—" : c.Comercio)</dd>
 
-                    <dt class="col-sm-5 fw-normal text-muted">Fecha del comprobante</dt>
-                    <dd class="col-sm-7">@(c.FechaComprobante?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "—")</dd>
+                    <dt class="col-sm-5 fw-normal text-body-secondary">Fecha del comprobante</dt>
+                    <dd class="col-sm-7">@c.FechaComprobante.FechaLocal()</dd>
 
-                    <dt class="col-sm-5 fw-normal text-muted">Descripción</dt>
+                    <dt class="col-sm-5 fw-normal text-body-secondary">Descripción</dt>
                     <dd class="col-sm-7">@(string.IsNullOrWhiteSpace(c.Descripcion) ? "—" : c.Descripcion)</dd>
 
-                    <dt class="col-sm-5 fw-normal text-muted">Monto</dt>
-                    <dd class="col-sm-7 fw-bold">@c.Monto.Moneda(c.Moneda?.ToString())</dd>
+                    <dt class="col-sm-5 fw-normal text-body-secondary">Monto</dt>
+                    <dd class="col-sm-7 fw-bold">@c.Monto.Moneda(c.Moneda)</dd>
 
-                    <dt class="col-sm-5 fw-normal text-muted">Fecha de carga</dt>
-                    <dd class="col-sm-7">@c.FechaCarga.ConvertirAArgentina().ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture)</dd>
+                    <dt class="col-sm-5 fw-normal text-body-secondary">Fecha de carga</dt>
+                    <dd class="col-sm-7">@c.FechaCarga.FechaHoraLocal()</dd>
 
-                    @if (c.FechaPago != null)
+                    @if (c.FechaPago is not null)
                     {
-                        <dt class="col-sm-5 fw-normal text-muted">Fecha de pago</dt>
-                        <dd class="col-sm-7">@c.FechaPago.Value.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)</dd>
+                        <dt class="col-sm-5 fw-normal text-body-secondary">Fecha de pago</dt>
+                        <dd class="col-sm-7">@c.FechaPago.Value.FechaLocal()</dd>
                     }
 
                     @if (c.EditadoManualmente)
                     {
-                        <dt class="col-sm-5 fw-normal text-muted">Edición</dt>
+                        <dt class="col-sm-5 fw-normal text-body-secondary">Edición</dt>
                         <dd class="col-sm-7"><span class="badge text-bg-light border">Editados manualmente</span></dd>
                     }
                 </dl>
@@ -114,66 +90,21 @@
 
             @if (puedeModificar)
             {
-                <div class="card-footer">
+                <div class="card-footer d-flex flex-wrap gap-2">
                     <button type="button" class="btn btn-primary" data-bs-toggle="collapse" data-bs-target="#formulario-edicion"
                             aria-expanded="@(mostrarFormulario ? "true" : "false")" aria-controls="formulario-edicion">
                         Editar datos
                     </button>
-                    <button type="button" id="boton-eliminar" class="btn btn-outline-danger"
-                            data-bs-toggle="modal" data-bs-target="#modal-eliminar">
+                    <button type="button" class="btn btn-outline-danger"
+                            data-bs-toggle="modal" data-bs-target="#modal-eliminar"
+                            data-id="@c.Id" data-nombre="@c.NombreArchivoOriginal">
                         Eliminar
                     </button>
                 </div>
 
                 <div class="collapse @(mostrarFormulario ? "show" : string.Empty)" id="formulario-edicion">
                     <form asp-action="EditarDetalle" asp-route-id="@c.Id" method="post" class="card-body border-top" novalidate>
-                        <div class="row g-3">
-                            <div class="col-sm-7">
-                                <label asp-for="Formulario.Comercio" class="form-label">Comercio</label>
-                                <input asp-for="Formulario.Comercio" class="form-control @ClaseInvalida("Formulario.Comercio")" maxlength="200">
-                                <span asp-validation-for="Formulario.Comercio" class="invalid-feedback"></span>
-                            </div>
-                            <div class="col-sm-5">
-                                <label asp-for="Formulario.FechaComprobante" class="form-label">Fecha del comprobante</label>
-                                <input asp-for="Formulario.FechaComprobante" type="date" max="@hoyArgentina"
-                                       class="form-control @ClaseInvalida("Formulario.FechaComprobante")"
-                                       data-val="true" data-val-fechanofutura="La fecha no puede ser futura." data-val-fechanofutura-max="@hoyArgentina"
-                                       data-msg-max="La fecha no puede ser futura.">
-                                <span asp-validation-for="Formulario.FechaComprobante" class="invalid-feedback"></span>
-                            </div>
-                            <div class="col-12">
-                                <label asp-for="Formulario.Descripcion" class="form-label">Descripción</label>
-                                <textarea asp-for="Formulario.Descripcion" class="form-control @ClaseInvalida("Formulario.Descripcion")" rows="2" maxlength="500"></textarea>
-                                <span asp-validation-for="Formulario.Descripcion" class="invalid-feedback"></span>
-                            </div>
-                            <div class="col-sm-7">
-                                <label asp-for="Formulario.Monto" class="form-label">Monto total</label>
-                                <input asp-for="Formulario.Monto" type="number" inputmode="decimal" step="0.01" min="0.01" max="99999999.99"
-                                       class="form-control @ClaseInvalida("Formulario.Monto")"
-                                       data-val-dosdecimales="@mensajeMonto" data-msg-step="@mensajeMonto" data-msg-min="@mensajeMonto" data-msg-max="@mensajeMonto">
-                                <span asp-validation-for="Formulario.Monto" class="invalid-feedback"></span>
-                            </div>
-                            <div class="col-sm-5">
-                                <label asp-for="Formulario.Moneda" class="form-label">Moneda</label>
-                                <select asp-for="Formulario.Moneda" class="form-select @ClaseInvalida("Formulario.Moneda")">
-                                    @foreach (var moneda in Enum.GetValues<Moneda>())
-                                    {
-                                        <option value="@moneda">@moneda</option>
-                                    }
-                                </select>
-                                <span asp-validation-for="Formulario.Moneda" class="invalid-feedback"></span>
-                            </div>
-                            <div class="col-sm-7">
-                                <label asp-for="Formulario.Categoria" class="form-label">Categoría</label>
-                                <select asp-for="Formulario.Categoria" class="form-select @ClaseInvalida("Formulario.Categoria")">
-                                    @foreach (var categoria in Enum.GetValues<Categoria>())
-                                    {
-                                        <option value="@categoria">@categoria.Texto()</option>
-                                    }
-                                </select>
-                                <span asp-validation-for="Formulario.Categoria" class="invalid-feedback"></span>
-                            </div>
-                        </div>
+                        <partial name="_FormularioEdicion" model="new FormularioEdicionViewModel { Formulario = Model.Formulario }" />
 
                         <div class="d-flex justify-content-end gap-2 mt-3">
                             <button type="button" class="btn btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#formulario-edicion">Cancelar</button>
@@ -184,57 +115,13 @@
             }
         </div>
 
-        <div class="card">
-            <div class="card-header fw-semibold">Historial</div>
-            <ul class="list-group list-group-flush">
-                @foreach (var cambio in c.Historial)
-                {
-                    <li class="list-group-item">
-                        <div class="d-flex justify-content-between align-items-start">
-                            <div>
-                                @if (cambio.EstadoAnterior != null)
-                                {
-                                    <span class="@cambio.EstadoAnterior.Value.ClaseBadge()">@cambio.EstadoAnterior.Value.Texto()</span>
-                                    <i class="bi bi-arrow-right mx-1"></i>
-                                }
-                                <span class="@cambio.EstadoNuevo.ClaseBadge()">@cambio.EstadoNuevo.Texto()</span>
-                            </div>
-                            <small class="text-muted">@cambio.Fecha.ConvertirAArgentina().ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture)</small>
-                        </div>
-                        <div class="small mt-1">
-                            @(cambio.UsuarioNombre ?? "Procesamiento automático")
-                            @if (!string.IsNullOrWhiteSpace(cambio.Observacion))
-                            {
-                                <span class="text-muted">· @cambio.Observacion</span>
-                            }
-                        </div>
-                    </li>
-                }
-            </ul>
-        </div>
+        <partial name="_Historial" model="c.Historial" />
     </div>
 </div>
 
 @if (puedeModificar)
 {
-    <div class="modal fade" id="modal-eliminar" tabindex="-1" aria-labelledby="titulo-modal-eliminar" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h2 class="modal-title fs-5" id="titulo-modal-eliminar">Eliminar comprobante</h2>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
-                </div>
-                <div class="modal-body">
-                    <div id="error-eliminar" class="alert alert-danger d-none" role="alert"></div>
-                    <p class="mb-0">Se va a eliminar <strong>@c.NombreArchivoOriginal</strong> y su archivo. Esta acción no se puede deshacer.</p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" id="confirmar-eliminar" class="btn btn-danger">Eliminar</button>
-                </div>
-            </div>
-        </div>
-    </div>
+    <partial name="_ModalEliminar" model="@Url.Action("Index")" />
 }
 
 @section Scripts {
@@ -243,5 +130,4 @@
         <partial name="_ValidationScriptsPartial" />
         <script src="~/js/validacion-bootstrap.js" asp-append-version="true"></script>
     }
-    <script src="~/js/detalle.js" asp-append-version="true"></script>
 }

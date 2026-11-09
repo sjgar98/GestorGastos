@@ -19,7 +19,7 @@ namespace GestorGastos.Servicios.Interfaces
         Task<Resultado<bool>> RegistrarExtraccionAsync(string blobNombre, DatosExtraidos datos);
         Task<Resultado<bool>> RegistrarFallaExtraccionAsync(string blobNombre, string mensajeError);
 
-        Task<Resultado<ComprobanteAdminDetalleDto>> ObtenerAdminDetalleAsync(int id, string adminId);
+        Task<Resultado<ComprobanteAdminDetalleDto>> ObtenerAdminDetalleAsync(int id);
         Task<Resultado<CambioEstadoRespuestaDto>> TomarEnRevisionAsync(int id, string adminId);
         Task<Resultado<CambioEstadoRespuestaDto>> AprobarAsync(int id, string adminId);
         Task<Resultado<CambioEstadoRespuestaDto>> RechazarAsync(int id, string adminId, string motivo);

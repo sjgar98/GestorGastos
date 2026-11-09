@@ -34,8 +34,31 @@ builder.Services.AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
                 var usuarioServicio = contexto.HttpContext.RequestServices.GetRequiredService<IUsuarioServicio>();
                 await usuarioServicio.RegistrarAccesoAsync(usuario.GetObjectId()!, usuario.Nombre(), usuario.Email());
             };
+            options.Events.OnRedirectToIdentityProvider = async contexto =>
+            {
+                if (!contexto.Request.EsRutaApi())
+                    return;
+
+                contexto.HandleResponse();
+                await contexto.HttpContext.EscribirProblemaAsync(StatusCodes.Status401Unauthorized,
+                    "Sin sesión", "Tenés que iniciar sesión para usar esta función.");
+            };
         },
-        cookies => cookies.AccessDeniedPath = "/Cuenta/AccesoDenegado");
+        cookies =>
+        {
+            cookies.AccessDeniedPath = "/Cuenta/AccesoDenegado";
+            cookies.Events.OnRedirectToAccessDenied = async contexto =>
+            {
+                if (!contexto.Request.EsRutaApi())
+                {
+                    contexto.Response.Redirect(contexto.RedirectUri);
+                    return;
+                }
+
+                await contexto.HttpContext.EscribirProblemaAsync(StatusCodes.Status403Forbidden,
+                    "Sin permiso", "No tenés permiso para realizar esta acción.");
+            };
+        });
 
 builder.Services.AddAuthorization(options =>
 {

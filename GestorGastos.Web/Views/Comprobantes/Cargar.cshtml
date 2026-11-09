@@ -9,7 +9,7 @@
 
 <nav aria-label="breadcrumb">
     <ol class="breadcrumb small">
-        <li class="breadcrumb-item"><a href="/Comprobantes">Mis comprobantes</a></li>
+        <li class="breadcrumb-item"><a asp-action="Index">Mis comprobantes</a></li>
         <li class="breadcrumb-item active" aria-current="page">Cargar comprobante</li>
     </ol>
 </nav>
@@ -73,7 +73,7 @@
                 </div>
             </div>
             <div class="card-footer d-flex flex-wrap gap-2 justify-content-end">
-                <a href="/Comprobantes" class="btn btn-outline-secondary">Cancelar</a>
+                <a asp-action="Index" class="btn btn-outline-secondary">Cancelar</a>
                 <button type="submit" class="btn btn-primary" id="btnSubir">
                     <span class="spinner-border spinner-border-sm me-1" aria-hidden="true" hidden></span>
                     <span class="texto-boton">Subir y analizar</span>

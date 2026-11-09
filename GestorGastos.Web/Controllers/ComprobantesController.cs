@@ -29,16 +29,15 @@ namespace GestorGastos.Web.Controllers
         public async Task<IActionResult> Detalle(int id)
         {
             var resultado = await _comprobanteServicio.ObtenerDetalleAsync(id, User.GetObjectId()!);
-
             if (!resultado.Exitoso)
-            {
-                return NotFound();
-            }
+                return this.ComoVista(resultado);
 
+            var comprobante = resultado.Valor!;
             return View(new DetalleComprobanteViewModel
             {
-                Comprobante = resultado.Valor!,
-                Formulario = AFormulario(resultado.Valor!)
+                Comprobante = comprobante,
+                Formulario = AFormulario(comprobante.Comercio, comprobante.FechaComprobante, comprobante.Descripcion,
+                    comprobante.Monto, comprobante.Moneda, comprobante.Categoria)
             });
         }
 
@@ -55,9 +54,7 @@ namespace GestorGastos.Web.Controllers
 
             var resultado = await _comprobanteServicio.EditarAsync(id, usuarioId, formulario);
             if (resultado.Error == TipoError.NoEncontrado)
-            {
-                return NotFound();
-            }
+                return this.ComoVista(resultado);
 
             if (!resultado.Exitoso)
             {
@@ -73,28 +70,13 @@ namespace GestorGastos.Web.Controllers
         {
             var detalle = await _comprobanteServicio.ObtenerDetalleAsync(id, usuarioId);
             if (!detalle.Exitoso)
-            {
-                return NotFound();
-            }
+                return this.ComoVista(detalle);
 
             return View(nameof(Detalle), new DetalleComprobanteViewModel
             {
                 Comprobante = detalle.Valor!,
                 Formulario = formulario
             });
-        }
-
-        private static EditarComprobanteDto AFormulario(ComprobanteDetalleDto comprobante)
-        {
-            return new EditarComprobanteDto
-            {
-                Comercio = comprobante.Comercio,
-                FechaComprobante = comprobante.FechaComprobante,
-                Descripcion = comprobante.Descripcion,
-                Monto = comprobante.Monto,
-                Moneda = comprobante.Moneda ?? Moneda.ARS,
-                Categoria = comprobante.Categoria
-            };
         }
 
         [HttpGet]
@@ -138,10 +120,12 @@ namespace GestorGastos.Web.Controllers
             if (!resultado.Exitoso)
                 return this.ComoVista(resultado);
 
+            var comprobante = resultado.Valor!;
             return View(new ResultadoCargaViewModel
             {
-                Comprobante = resultado.Valor!,
-                Formulario = AFormulario(resultado.Valor!)
+                Comprobante = comprobante,
+                Formulario = AFormulario(comprobante.Comercio, comprobante.FechaComprobante, comprobante.Descripcion,
+                    comprobante.Monto, comprobante.Moneda, comprobante.Categoria)
             });
         }
 
@@ -171,7 +155,7 @@ namespace GestorGastos.Web.Controllers
                 ? "Datos guardados. El comprobante quedó Pendiente de Revisión."
                 : "Cambios guardados.";
 
-            return RedirectToAction(nameof(Resultado), new { id });
+            return RedirectToAction(nameof(Index));
         }
 
         private ViewResult VistaResultado(EstadoComprobanteDto comprobante, EditarComprobanteDto formulario)
@@ -183,16 +167,17 @@ namespace GestorGastos.Web.Controllers
             });
         }
 
-        private static EditarComprobanteDto AFormulario(EstadoComprobanteDto comprobante)
+        private static EditarComprobanteDto AFormulario(string? comercio, DateOnly? fecha, string? descripcion,
+            decimal? monto, Moneda? moneda, Categoria categoria)
         {
             return new EditarComprobanteDto
             {
-                Comercio = comprobante.Comercio,
-                FechaComprobante = comprobante.FechaComprobante,
-                Descripcion = comprobante.Descripcion,
-                Monto = comprobante.Monto,
-                Moneda = comprobante.Moneda ?? Moneda.ARS,
-                Categoria = comprobante.Categoria
+                Comercio = comercio,
+                FechaComprobante = fecha,
+                Descripcion = descripcion,
+                Monto = monto,
+                Moneda = moneda ?? Moneda.ARS,
+                Categoria = categoria
             };
         }
     }

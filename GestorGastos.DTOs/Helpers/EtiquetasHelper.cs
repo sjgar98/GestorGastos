@@ -1,9 +1,12 @@
-﻿using GestorGastos.DTOs.Enums;
+using System.Globalization;
+using GestorGastos.DTOs.Enums;
 
 namespace GestorGastos.DTOs.Helpers
 {
     public static class EtiquetasHelper
     {
+        private static readonly CultureInfo CulturaArgentina = CultureInfo.GetCultureInfo("es-AR");
+
         public static string Texto(this EstadoComprobante estado) => estado switch
         {
             EstadoComprobante.Procesando => "Procesando",
@@ -45,19 +48,19 @@ namespace GestorGastos.DTOs.Helpers
             _ => tipo.ToString()
         };
 
-        public static string Moneda(this decimal? monto, string? moneda)
+        public static string Moneda(this decimal? monto, Moneda? moneda)
         {
             if (monto is null) return "—";
             var simbolo = moneda switch
             {
-                "USD" => "USD ",
-                "EUR" => "€",
-                "BRL" => "R$",
-                "CLP" => "CLP ",
-                "UYU" => "UYU ",
+                Enums.Moneda.USD => "USD",
+                Enums.Moneda.EUR => "€",
+                Enums.Moneda.BRL => "R$",
+                Enums.Moneda.CLP => "CLP",
+                Enums.Moneda.UYU => "UYU",
                 _ => "$"
             };
-            return $"{simbolo}{monto.Value:N2}";
+            return $"{simbolo} {monto.Value.ToString("N2", CulturaArgentina)}";
         }
     }
 }
