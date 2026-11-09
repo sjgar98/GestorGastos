@@ -1,143 +1,110 @@
-@model GestorGastos.DTOs.PaginadoDto<GestorGastos.DTOs.ComprobanteAdminListadoDto>
-@using GestorGastos.DTOs
-@using GestorGastos.DTOs.Enums
-@using GestorGastos.DTOs.Helpers
-@using GestorGastos.Web.Helpers
-@using Microsoft.Identity.Web
-
+@model PaginadoDto<ComprobanteAdminListadoDto>
 @{
-    Layout = "~/Views/Shared/_Layout.cshtml";
     ViewData["Title"] = "Todos los comprobantes";
     var filtro = ViewBag.Filtro as FiltroAdminComprobantesDto ?? new FiltroAdminComprobantesDto();
     var empleados = ViewBag.Empleados as IEnumerable<UsuarioDto> ?? new List<UsuarioDto>();
     var adminId = User.GetObjectId();
+    var filtrosDeRuta = new Dictionary<string, string>();
+    if (filtro.Estado is not null)
+        filtrosDeRuta["estado"] = filtro.Estado.Value.ToString();
+    if (!string.IsNullOrEmpty(filtro.EmpleadoId))
+        filtrosDeRuta["empleadoId"] = filtro.EmpleadoId;
+    if (!string.IsNullOrEmpty(filtro.Orden))
+        filtrosDeRuta["orden"] = filtro.Orden;
 }
 
-<div class="d-flex align-items-center justify-content-between mb-4">
+<div class="mb-3">
+    <p class="text-body-secondary mb-1">Administración</p>
     <h1 class="h3 mb-0">Todos los comprobantes</h1>
 </div>
 
-<!-- Filtros y orden -->
-<div class="card mb-4">
-    <div class="card-body">
-        <form method="get" class="row g-3 align-items-end">
-            <div class="col-md-3">
-                <label for="Estado" class="form-label form-label-sm">Estado</label>
-                <select name="Estado" id="Estado" class="form-select form-select-sm">
-                    <option value="">Todos los estados</option>
-                    @foreach (var estado in Enum.GetValues<EstadoComprobante>())
-                    {
-                        var valorStr = estado.ToString();
-                        <option value="@valorStr" selected="@(filtro.Estado == valorStr)">@estado.Texto()</option>
-                    }
-                </select>
-            </div>
-            <div class="col-md-3">
-                <label for="EmpleadoId" class="form-label form-label-sm">Empleado</label>
-                <select name="EmpleadoId" id="EmpleadoId" class="form-select form-select-sm">
-                    <option value="">Todos los empleados</option>
-                    @foreach (var emp in empleados)
-                    {
-                        <option value="@emp.Id" selected="@(filtro.EmpleadoId == emp.Id)">@emp.Nombre (@emp.Email)</option>
-                    }
-                </select>
-            </div>
-            <div class="col-md-3">
-                <label for="Orden" class="form-label form-label-sm">Orden</label>
-                <select name="Orden" id="Orden" class="form-select form-select-sm">
-                    <option value="recientes" selected="@(filtro.Orden == "recientes" || string.IsNullOrEmpty(filtro.Orden))">Más recientes primero</option>
-                    <option value="antiguos" selected="@(filtro.Orden == "antiguos")">Más antiguos primero</option>
-                </select>
-            </div>
-            <div class="col-md-3 d-flex gap-2">
-                <button type="submit" class="btn btn-outline-secondary btn-sm w-100">Filtrar</button>
-                <a asp-action="Index" class="btn btn-outline-dark btn-sm w-100">Limpiar</a>
-            </div>
-        </form>
+<form method="get" asp-action="Index" class="row g-2 mb-3" data-enviar-al-cambiar>
+    <div class="col-sm-6 col-md-4 col-lg-3">
+        <label for="Estado" class="form-label small text-body-secondary mb-1">Estado</label>
+        <select name="Estado" id="Estado" class="form-select form-select-sm">
+            <option value="">Todos</option>
+            @foreach (var estado in Enum.GetValues<EstadoComprobante>())
+            {
+                <option value="@estado" selected="@(filtro.Estado == estado)">@estado.Texto()</option>
+            }
+        </select>
     </div>
-</div>
+    <div class="col-sm-6 col-md-4 col-lg-3">
+        <label for="EmpleadoId" class="form-label small text-body-secondary mb-1">Empleado</label>
+        <select name="EmpleadoId" id="EmpleadoId" class="form-select form-select-sm">
+            <option value="">Todos</option>
+            @foreach (var empleado in empleados)
+            {
+                <option value="@empleado.Id" selected="@(filtro.EmpleadoId == empleado.Id)">@empleado.Nombre</option>
+            }
+        </select>
+    </div>
+    <div class="col-sm-6 col-md-4 col-lg-3">
+        <label for="Orden" class="form-label small text-body-secondary mb-1">Orden</label>
+        <select name="Orden" id="Orden" class="form-select form-select-sm">
+            <option value="recientes" selected="@(filtro.Orden != "antiguos")">Más recientes primero</option>
+            <option value="antiguos" selected="@(filtro.Orden == "antiguos")">Más antiguos primero</option>
+        </select>
+    </div>
+</form>
 
-<!-- Tabla de comprobantes -->
 <div class="card">
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead class="table-light">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th scope="col">Nombre</th>
+                    <th scope="col">Empleado</th>
+                    <th scope="col">Fecha de carga</th>
+                    <th scope="col" class="text-end">Monto</th>
+                    <th scope="col">Estado</th>
+                    <th scope="col" class="text-end">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.TotalRegistros == 0)
+                {
                     <tr>
-                        <th>Archivo</th>
-                        <th>Empleado</th>
-                        <th>Fecha de carga</th>
-                        <th>Monto</th>
-                        <th>Estado</th>
-                        <th class="text-end">Acciones</th>
+                        <td colspan="6" class="text-center text-body-secondary py-5">No hay comprobantes con los filtros elegidos.</td>
                     </tr>
-                </thead>
-                <tbody>
-                    @if (Model.Elementos == null || !Model.Elementos.Any())
+                }
+                else
+                {
+                    foreach (var comprobante in Model.Elementos)
                     {
+                        var esPropio = comprobante.UsuarioId == adminId;
                         <tr>
-                            <td colspan="6" class="text-center text-muted py-4">No se encontraron comprobantes con los filtros seleccionados.</td>
+                            <td class="fw-medium text-break">@comprobante.NombreArchivoOriginal</td>
+                            <td>
+                                @comprobante.NombreEmpleado
+                                @if (esPropio)
+                                {
+                                    <span class="badge text-bg-light border ms-1">Propio</span>
+                                }
+                            </td>
+                            <td>@comprobante.FechaCarga.FechaLocal()</td>
+                            <td class="text-end text-nowrap">@comprobante.Monto.Moneda(comprobante.Moneda)</td>
+                            <td><partial name="_BadgeEstado" model="comprobante.Estado" /></td>
+                            <td class="text-end">
+                                <div class="btn-group btn-group-sm" role="group">
+                                    @if (!esPropio)
+                                    {
+                                        <partial name="_BotonesAccionAdmin" model="new AccionesAdminViewModel { Id = comprobante.Id, Estado = comprobante.Estado, FechaCarga = comprobante.FechaCarga, EnTabla = true }" />
+                                    }
+                                    <a asp-action="Detalle" asp-route-id="@comprobante.Id" class="btn btn-outline-secondary">Ver detalle</a>
+                                </div>
+                            </td>
                         </tr>
                     }
-                    else
-                    {
-                        foreach (var c in Model.Elementos)
-                        {
-                            var esPropio = c.UsuarioId == adminId;
-                            <tr>
-                                <td>
-                                    <span class="fw-semibold">@c.NombreArchivoOriginal</span>
-                                </td>
-                                <td>
-                                    @c.NombreEmpleado
-                                    @if (esPropio)
-                                    {
-                                        <span class="badge text-bg-secondary ms-1">Propio</span>
-                                    }
-                                    <br><small class="text-muted">@c.EmailEmpleado</small>
-                                </td>
-                                <td>@c.FechaCarga.FechaHoraLocal()</td>
-                                <td>@c.Monto.Moneda(c.Moneda)</td>
-                                <td>
-                                    @await Html.PartialAsync("_BadgeEstado", c.Estado)
-                                </td>
-                                <td class="text-end">
-                                    <div class="btn-group btn-group-sm" role="group">
-                                        <a asp-action="Detalle" asp-route-id="@c.Id" class="btn btn-outline-secondary" title="Ver detalle">
-                                            <i class="bi bi-eye"></i> Ver detalle
-                                        </a>
-                                    </div>
-                                </td>
-                            </tr>
-                        }
-                    }
-                </tbody>
-            </table>
-        </div>
+                }
+            </tbody>
+        </table>
     </div>
-
-    @if (Model.TotalRegistros > 0)
-    {
-        <div class="card-footer d-flex align-items-center justify-content-between flex-wrap py-3">
-            <div class="text-muted small mb-2 mb-md-0">
-                Mostrando @(((Model.PaginaActual - 1) * Model.TamanoPagina) + 1) al @Math.Min(Model.PaginaActual * Model.TamanoPagina, Model.TotalRegistros) de @Model.TotalRegistros registros
-            </div>
-            <nav aria-label="Paginación">
-                <ul class="pagination pagination-sm mb-0">
-                    <li class="page-item @(Model.PaginaActual == 1 ? "disabled" : "")">
-                        <a class="page-link" asp-action="Index" asp-route-pagina="@(Model.PaginaActual - 1)" asp-route-estado="@filtro.Estado" asp-route-empleadoId="@filtro.EmpleadoId" asp-route-orden="@filtro.Orden">Anterior</a>
-                    </li>
-                    @for (int i = 1; i <= Model.TotalPaginas; i++)
-                    {
-                        <li class="page-item @(Model.PaginaActual == i ? "active" : "")">
-                            <a class="page-link" asp-action="Index" asp-route-pagina="@i" asp-route-estado="@filtro.Estado" asp-route-empleadoId="@filtro.EmpleadoId" asp-route-orden="@filtro.Orden">@i</a>
-                        </li>
-                    }
-                    <li class="page-item @(Model.PaginaActual == Model.TotalPaginas ? "disabled" : "")">
-                        <a class="page-link" asp-action="Index" asp-route-pagina="@(Model.PaginaActual + 1)" asp-route-estado="@filtro.Estado" asp-route-empleadoId="@filtro.EmpleadoId" asp-route-orden="@filtro.Orden">Siguiente</a>
-                    </li>
-                </ul>
-            </nav>
-        </div>
-    }
+    <partial name="_Paginacion" model="new PaginacionViewModel { Paginado = Model, Filtros = filtrosDeRuta }" />
 </div>
+
+<partial name="_ModalesAccionAdmin" />
+
+@section Scripts {
+    <script src="~/js/admin-acciones.js" asp-append-version="true"></script>
+}

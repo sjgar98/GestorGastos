@@ -1,0 +1,68 @@
+@using Microsoft.AspNetCore.Mvc.ModelBinding
+@model FormularioEdicionViewModel
+@{
+    var hoyArgentina = FechaHelper.HoyEnArgentina().ToString("yyyy-MM-dd");
+    const string mensajeMonto = "Ingresá un monto mayor a 0, con hasta 2 decimales.";
+    string ClaseInvalida(string campo) =>
+        ViewData.ModelState.GetFieldValidationState(campo) == ModelValidationState.Invalid ? "is-invalid" : string.Empty;
+}
+
+<div class="row g-3">
+    <div class="col-sm-7">
+        <label asp-for="Formulario.Comercio" class="form-label">Comercio</label>
+        <input asp-for="Formulario.Comercio" class="form-control @ClaseInvalida("Formulario.Comercio")" maxlength="200">
+        <span asp-validation-for="Formulario.Comercio" class="invalid-feedback"></span>
+    </div>
+    <div class="col-sm-5">
+        <label asp-for="Formulario.FechaComprobante" class="form-label">Fecha del comprobante</label>
+        <input asp-for="Formulario.FechaComprobante" type="date" max="@hoyArgentina"
+               class="form-control @ClaseInvalida("Formulario.FechaComprobante")"
+               data-val="true" data-val-fechanofutura="La fecha no puede ser futura." data-val-fechanofutura-max="@hoyArgentina"
+               data-msg-max="La fecha no puede ser futura.">
+        <span asp-validation-for="Formulario.FechaComprobante" class="invalid-feedback"></span>
+    </div>
+    <div class="col-12">
+        <label asp-for="Formulario.Descripcion" class="form-label">
+            Descripción
+            @if (Model.ConfianzaDescripcion is < 0.8)
+            {
+                <partial name="_BadgeRevisar" model="Model.ConfianzaDescripcion.Value" />
+            }
+        </label>
+        <textarea asp-for="Formulario.Descripcion" class="form-control @ClaseInvalida("Formulario.Descripcion")" rows="2" maxlength="500"></textarea>
+        <span asp-validation-for="Formulario.Descripcion" class="invalid-feedback"></span>
+    </div>
+    <div class="col-sm-7">
+        <label asp-for="Formulario.Monto" class="form-label">
+            Monto total
+            @if (Model.ConfianzaMonto is < 0.8)
+            {
+                <partial name="_BadgeRevisar" model="Model.ConfianzaMonto.Value" />
+            }
+        </label>
+        <input asp-for="Formulario.Monto" type="number" inputmode="decimal" step="0.01" min="0.01" max="99999999.99"
+               class="form-control @ClaseInvalida("Formulario.Monto")"
+               data-val-dosdecimales="@mensajeMonto" data-msg-step="@mensajeMonto" data-msg-min="@mensajeMonto" data-msg-max="@mensajeMonto">
+        <span asp-validation-for="Formulario.Monto" class="invalid-feedback"></span>
+    </div>
+    <div class="col-sm-5">
+        <label asp-for="Formulario.Moneda" class="form-label">Moneda</label>
+        <select asp-for="Formulario.Moneda" class="form-select @ClaseInvalida("Formulario.Moneda")">
+            @foreach (var moneda in Enum.GetValues<Moneda>())
+            {
+                <option value="@moneda">@moneda</option>
+            }
+        </select>
+        <span asp-validation-for="Formulario.Moneda" class="invalid-feedback"></span>
+    </div>
+    <div class="col-sm-7">
+        <label asp-for="Formulario.Categoria" class="form-label">Categoría</label>
+        <select asp-for="Formulario.Categoria" class="form-select @ClaseInvalida("Formulario.Categoria")">
+            @foreach (var categoria in Enum.GetValues<Categoria>())
+            {
+                <option value="@categoria">@categoria.Texto()</option>
+            }
+        </select>
+        <span asp-validation-for="Formulario.Categoria" class="invalid-feedback"></span>
+    </div>
+</div>

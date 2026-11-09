@@ -1,0 +1,16 @@
+@model (int Id, string ContentType)
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span class="fw-semibold">Vista previa</span>
+        <button type="button" id="boton-descargar" class="btn btn-sm btn-outline-secondary" disabled>
+            <i class="bi bi-download me-1" aria-hidden="true"></i>Descargar
+        </button>
+    </div>
+    <div id="vista-previa"
+         class="vista-previa bg-body-secondary d-flex align-items-center justify-content-center text-body-secondary"
+         data-comprobante-id="@Model.Id"
+         data-content-type="@Model.ContentType">
+        Cargando vista previa…
+    </div>
+</div>

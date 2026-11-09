@@ -7,11 +7,13 @@ namespace GestorGastos.DTOs
     {
         public int Id { get; set; }
         public string NombreArchivoOriginal { get; set; } = string.Empty;
+        public string ContentType { get; set; } = string.Empty;
 
         [JsonConverter(typeof(JsonStringEnumConverter))]
         public EstadoComprobante Estado { get; set; }
 
         public string EstadoTexto { get; set; } = string.Empty;
+        public string ClaseBadge { get; set; } = string.Empty;
 
         [JsonConverter(typeof(JsonStringEnumConverter))]
         public TipoDocumento TipoDocumento { get; set; }
@@ -23,6 +25,7 @@ namespace GestorGastos.DTOs
         public DateOnly? FechaComprobante { get; set; }
         public string? Descripcion { get; set; }
         public decimal? Monto { get; set; }
+        public string MontoTexto { get; set; } = string.Empty;
 
         [JsonConverter(typeof(JsonStringEnumConverter))]
         public Moneda? Moneda { get; set; }

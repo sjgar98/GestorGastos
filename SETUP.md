@@ -61,26 +61,30 @@ dotnet user-secrets set "AzureAd:ClientSecret" "<Value del secreto>" --project G
 
 **Prueba:** `dotnet run --project GestorGastos.Web --launch-profile https` y abrir `https://localhost:7282`.
 - `/` muestra la Bienvenida sin pedir login. **Iniciar sesión con Microsoft** lleva al login del tenant GestorGastos.
-- Después del login, con rol `Empleado` o `Administrador`, se ve "Hola, <nombre>" con la navbar (Administración solo
+- Después del login, con rol `Empleado` o `Administrador`, se ve el Dashboard con la navbar (Administración solo
   para el admin) y el usuario queda guardado en la tabla `Usuarios`. Sin rol, se ve Acceso denegado.
+- Con `func start` corriendo en `GestorGastos.Functions`, un comprobante cargado pasa de Procesando a Pendiente de
+  Revisión (o a Error si el nombre del archivo tiene `error` o `borroso`).
 - **Cerrar sesión** (menú con el nombre arriba a la derecha) vuelve a la Bienvenida.
-- Los links Mis comprobantes, Cargar y Administración dan 404 porque esas pantallas todavía no existen.
 
 ## 2. En Azure: App Service
 
-Con el directorio de **UNLaM** seleccionado, abrir `app-gestorgastos-pw3` y entrar a **Settings → Environment variables → App settings**. Agregar una por fila con **Add**:
+Con el directorio de **UNLaM** seleccionado, abrir `app-gestorgastos-pw3`.
 
-| Name | Value |
-|---|---|
-| `AzureAd__TenantId` | Tenant ID |
-| `AzureAd__ClientId` | Client ID |
-| `AzureAd__ClientSecret` | Value del secreto |
-| `ConnectionStrings__GestorGastos` | Cadena ADO.NET de Azure SQL, con la contraseña |
-| `Storage__ConnectionString` | Cadena de `stgestorgastospw3` |
-| `Storage__Contenedor` | `comprobantes` |
+1. **Settings → Environment variables → App settings**. Agregar una por fila con **Add**:
 
-Verificar que ya exista `APPLICATIONINSIGHTS_CONNECTION_STRING` (se agrega al conectar App Insights al
-crear la app). Al final, **Apply → Confirm** (la app se reinicia).
+   | Name | Value |
+   |---|---|
+   | `AzureAd__TenantId` | Tenant ID |
+   | `AzureAd__ClientId` | Client ID |
+   | `AzureAd__ClientSecret` | Value del secreto |
+   | `ConnectionStrings__GestorGastos` | Cadena ADO.NET de Azure SQL, con la contraseña (usuario administrador del servidor: la web aplica las migraciones) |
+   | `Storage__ConnectionString` | Cadena de `stgestorgastospw3` (**Security + networking → Access keys → Connection string**; tiene que incluir `AccountKey`, se usa para firmar las URLs SAS) |
+   | `Storage__Contenedor` | `comprobantes` |
+
+   Verificar que ya exista `APPLICATIONINSIGHTS_CONNECTION_STRING` (se agrega al conectar App Insights al
+   crear la app). Al final, **Apply → Confirm** (la app se reinicia).
+2. **Settings → Configuration → General settings**: Stack **.NET**, versión **.NET 10**, y **HTTPS Only** en On. **Save**.
 
 ## 3. En Azure: Function App
 
@@ -89,54 +93,141 @@ Abrir `func-gestorgastos-pw3` y entrar a **Settings → Environment variables �
 | Name | Value |
 |---|---|
 | `ConnectionStrings__GestorGastos` | Cadena de Azure SQL |
-| `Storage__ConnectionString` | Cadena del Storage |
+| `Storage__ConnectionString` | Cadena del Storage (la misma que la web) |
 | `Storage__Contenedor` | `comprobantes` |
-| `DocumentIntelligence__Endpoint` | Endpoint |
+| `DocumentIntelligence__Endpoint` | Endpoint de `di-gestorgastos-pw3` (**Resource Management → Keys and Endpoint**) |
 | `DocumentIntelligence__Key` | KEY 1 |
 
 `AzureWebJobsStorage` (o su variante con managed identity) y `APPLICATIONINSIGHTS_CONNECTION_STRING` los
-creó el asistente: no tocarlos.
+creó el asistente: no tocarlos. Si `DocumentIntelligence__Endpoint` queda vacío, la Function usa el extractor mock.
 
-## 4. Migraciones en Azure SQL
+## 4. Azure SQL y migraciones
 
-Desde el lugar de desarrollo habitual:
+La web aplica las migraciones pendientes **al arrancar**, también en Azure (decisión del equipo, ver `AGENTS.md` sección 0):
+no hace falta correr `dotnet ef database update` contra producción. Solo hay que permitir que la web y la Function lleguen
+a la base:
 
-1. Agregar la IP en el firewall del servidor SQL (repetir si cambia la IP o la red):
-   - Abrir el servidor `sql-gestorgastos-pw3` (no la base).
-   - **Security → Networking**.
-   - En **Firewall rules**, clic en **Add your client IPv4 address**.
-   - **Save**.
-2. Correr:
+1. Abrir el servidor `sql-gestorgastos-pw3` (no la base) → **Security → Networking**.
+2. Tildar **Allow Azure services and resources to access this server** → **Save**.
 
-   ```bash
-   ConnectionStrings__GestorGastos="<cadena de Azure SQL>" \
-     dotnet ef database update --project GestorGastos.Entidades --startup-project GestorGastos.Web
+Para conectarse desde la máquina propia (por ejemplo con Azure Data Studio, para mirar datos), agregar además la IP en
+**Firewall rules → Add your client IPv4 address**.
+
+## 5. Desplegar (paso a paso)
+
+### 5.1 Herramientas (una vez)
+
+- **Azure CLI**: Arch/CachyOS `sudo pacman -S azure-cli`; Windows `winget install Microsoft.AzureCLI`; otros sistemas:
+  <https://learn.microsoft.com/cli/azure/install-azure-cli>.
+- **Azure Functions Core Tools v4**: `npm install -g azure-functions-core-tools@4` (también sirve para `func start` en local).
+- Iniciar sesión en el directorio de UNLaM y elegir la suscripción:
+
+  ```bash
+  az login                                  # abre el navegador; entrar con la cuenta de UNLaM
+  az account list -o table                  # ver el nombre de la suscripción
+  az account set --subscription "<nombre de la suscripción Azure for Students>"
+  ```
+
+### 5.2 App Registration (tenant GestorGastos)
+
+En el portal, cambiar al directorio **GestorGastos** → **App registrations → GestorGastos → Authentication**. En la
+plataforma **Web**, agregar estas Redirect URIs (además de las de localhost) y **Save**:
+
+```text
+https://app-gestorgastos-pw3.azurewebsites.net/signin-oidc
+https://app-gestorgastos-pw3.azurewebsites.net/signout-callback-oidc
+```
+
+Si el App Service tiene otro dominio (ver **Overview → Default domain**), usar ese.
+
+### 5.3 Publicar la web
+
+Desde la raíz del repo (la carpeta de salida queda fuera del repo):
+
+```bash
+dotnet publish GestorGastos.Web -c Release -o /tmp/gestorgastos-web
+(cd /tmp/gestorgastos-web && zip -qr ../gestorgastos-web.zip .)
+az webapp deploy --resource-group rg-gestorgastos --name app-gestorgastos-pw3 \
+  --src-path /tmp/gestorgastos-web.zip --type zip
+```
+
+Verificar: abrir `https://app-gestorgastos-pw3.azurewebsites.net`. La primera carga puede tardar ~1 minuto (arranque en
+frío del F1 y, si la base estaba pausada, su reanudación); en ese arranque se crean las tablas. Si da error 500,
+mirar **App Service → Monitoring → Log stream**.
+
+### 5.4 Publicar la Function
+
+```bash
+cd GestorGastos.Functions
+func azure functionapp publish func-gestorgastos-pw3
+cd ..
+```
+
+`func` compila en **Release**, que es lo que hace falta: el build Release usa el Blob Trigger con origen Event Grid, el único
+que admite Flex Consumption. Verificar en **Function App → Overview → Functions** que aparezca `ExtraerComprobanteFunction`.
+
+### 5.5 Event Grid
+
+1. Registrar el proveedor (una vez por suscripción): **Subscriptions → (la suscripción) → Settings → Resource providers**,
+   buscar `Microsoft.EventGrid` y, si no dice *Registered*, **Register** (tarda unos minutos).
+2. En `func-gestorgastos-pw3`: **Functions → App keys → System keys**, copiar el valor de `blobs_extension`
+   (existe recién después de publicar la Function).
+3. En `stgestorgastospw3`: **Events → + Event Subscription**:
+   - Name: `blob-comprobantes`. Event Schema: **Event Grid Schema**.
+   - System Topic Name: `stgestorgastospw3-eventos` (si pide uno).
+   - Filter to Event Types: solo **Blob Created**.
+   - Endpoint Type: **Web Hook** → **Configure an endpoint** con:
+
+     ```text
+     https://func-gestorgastos-pw3.azurewebsites.net/runtime/webhooks/blobs?functionName=Host.Functions.ExtraerComprobanteFunction&code=<blobs_extension>
+     ```
+
+     (cambiar el dominio si **Overview → Default domain** de la Function App es otro).
+   - Pestaña **Filters → Enable subject filtering**: *Subject Begins With* `/blobServices/default/containers/comprobantes/`.
+   - **Create**. Si falla la validación del endpoint, revisar que la Function esté publicada y que el `code` sea el de `blobs_extension`.
+
+### 5.6 Prueba de punta a punta
+
+Con la cuenta de prueba del Empleado:
+
+1. Cargar un recibo legible (foto o PDF de un ticket). En menos de un minuto tiene que pasar a **Pendiente de Revisión**
+   con monto y descripción.
+2. Cargar una imagen ilegible (por ejemplo, una foto borrosa o de algo que no sea un comprobante). Tiene que terminar en
+   **Error de extracción**; completar monto y descripción y guardarlo para enviarlo a revisión.
+3. En el detalle, probar la vista previa y **Descargar**. Copiar la URL de la imagen, esperar 5 minutos y abrirla: tiene que
+   dar error de autorización.
+
+Con la cuenta del Administrador: en **Administración**, tomar → aprobar → marcar pagado un comprobante, y tomar → rechazar
+otro con motivo. Si la extracción no avanza, mirar **Function App → Monitoring → Logs** y la suscripción de Event Grid
+(**Storage → Events → la suscripción → Metrics**: *Delivered* vs *Failed*).
+
+### 5.7 Captura de Application Insights (entregable)
+
+1. Hacer una carga nueva (paso 5.6.1) y anotar la hora.
+2. Abrir `appi-gestorgastos` → **Monitoring → Logs** (cerrar la galería de consultas, modo **KQL**) y correr:
+
+   ```kusto
+   union traces, requests, exceptions
+   | where timestamp > ago(30m)
+   | where message has "Comprobante" or message has "extracción" or operation_Name has "ExtraerComprobante"
+   | project timestamp, cloud_RoleName, itemType, message, operation_Name
+   | order by timestamp asc
    ```
 
-   Alternativa sin abrir el firewall: generar el script y ejecutarlo en **Query editor** de la base, en el portal.
+   Tienen que verse, en orden: "Comprobante N cargado…" (web), "Inicio de extracción…", "Comprobante N pasó de Procesando
+   a PendienteRevision" y "Fin de extracción … en N ms" (Function). Las trazas pueden tardar 2 a 5 minutos en aparecer.
+3. Otra vista útil para la captura: **Investigate → Transaction search**, filtrar por los últimos 30 minutos y abrir la
+   ejecución de `ExtraerComprobanteFunction`.
+4. Si solo aparecen requests y ningún `traces` de nivel Information, avisar: habría que ajustar el filtro de logs del SDK.
 
-   ```bash
-   dotnet ef migrations script --idempotent -o migracion.sql \
-     --project GestorGastos.Entidades --startup-project GestorGastos.Web
-   ```
+### 5.8 Opcional: CD con GitHub Actions
 
-Repetir cada vez que se agregue una migración: en Azure la web no las aplica sola (solo en Development).
+Se puede agregar un job de despliegue al workflow de CI con `azure/login` (credenciales federadas OIDC de un service
+principal con rol Contributor en `rg-gestorgastos`), `azure/webapps-deploy` para la web y `Azure/functions-action` para la
+Function. No es obligatorio para la entrega.
 
-## 5. Qué falta después
+## 6. Otros pendientes
 
-- **Desplegar la web y la Function**: el App Service y la Function App están vacíos. A mano (VS Code,
-  `dotnet publish`) o agregando CD al pipeline de GitHub Actions.
-- **Event Grid** (la Function hay que publicarla en **Release**: el build Debug usa el trigger clásico, que Flex Consumption no admite):
-  1. En `func-gestorgastos-pw3`: **Functions → App keys → System keys**, copiar `blobs_extension`.
-  2. En `stgestorgastospw3`: **Events → Event Subscription**, con:
-     - Esquema: **Event Grid Schema**.
-     - Evento: **Blob Created**.
-     - Filtro de sujeto: empieza con `/blobServices/default/containers/comprobantes/`.
-     - Endpoint: **Web Hook**, con esta URL:
-
-       ```text
-       https://<dominio de la Function App>/runtime/webhooks/blobs?functionName=Host.Functions.ExtraerComprobanteFunction&code=<blobs_extension>
-       ```
 - **Contraseñas definitivas de las cuentas de prueba** (si no se hizo): iniciar sesión una vez con cada una en `https://myapps.microsoft.com` en una ventana de incógnito y guardarlas en un lugar privado.
 - **Permisos de los integrantes** (si no se hizo):
   - Rol **Contributor** en `rg-gestorgastos` (directorio de UNLaM).
@@ -152,5 +243,8 @@ Repetir cada vez que se agregue una migración: en Azure la web no las aplica so
 | `AADSTS7000215` (secreto inválido) | Se copió el *Secret ID* en lugar del *Value*, o el secreto venció (vence a los 365 días) |
 | El usuario entra pero no tiene rol | Se asignó el rol con la sesión abierta: cerrar sesión y volver a entrar |
 | La web en Azure no conecta a SQL | Falta **Allow Azure services** en el firewall del servidor |
+| Error 500 en la web en Azure al arrancar | Falta algún App Setting (`AzureAd__*`, `Storage__*`, `ConnectionStrings__GestorGastos`): ver **Log stream** |
+| "No se pudo cargar la vista previa" en Azure | `Storage__ConnectionString` sin `AccountKey` (no se pueden firmar SAS) |
+| Los comprobantes quedan en Procesando en Azure | Falta la suscripción de Event Grid, la Function se publicó en Debug o el `code` del webhook no es `blobs_extension` |
 | `dotnet ef` no conecta a Azure SQL | La IP actual no está en el firewall |
 | La base no responde a fin de mes | Se agotó el cupo gratuito mensual y quedó pausada hasta el mes siguiente |

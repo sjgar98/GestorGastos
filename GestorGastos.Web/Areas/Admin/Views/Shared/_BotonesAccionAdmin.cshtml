@@ -1,0 +1,21 @@
+@model AccionesAdminViewModel
+@{
+    var tamanio = Model.EnTabla ? string.Empty : "btn-sm";
+    string Estilo(string color) => Model.EnTabla ? $"btn-outline-{color}" : $"btn-{color}";
+    var fechaCarga = DateOnly.FromDateTime(Model.FechaCarga.ConvertirAArgentina()).ToString("yyyy-MM-dd");
+}
+
+@switch (Model.Estado)
+{
+    case EstadoComprobante.PendienteRevision:
+        <button type="button" class="btn @Estilo("primary") @tamanio" data-accion-admin="tomar" data-id="@Model.Id">Tomar en revisión</button>
+        break;
+    case EstadoComprobante.EnRevision:
+        <button type="button" class="btn @Estilo("success") @tamanio" data-accion-admin="aprobar" data-id="@Model.Id">Aprobar</button>
+        <button type="button" class="btn btn-outline-danger @tamanio" data-bs-toggle="modal" data-bs-target="#modal-rechazar" data-id="@Model.Id">Rechazar</button>
+        break;
+    case EstadoComprobante.Aprobado:
+        <button type="button" class="btn @Estilo("success") @tamanio" data-bs-toggle="modal" data-bs-target="#modal-pagar"
+                data-id="@Model.Id" data-fecha-carga="@fechaCarga">Marcar pagado</button>
+        break;
+}

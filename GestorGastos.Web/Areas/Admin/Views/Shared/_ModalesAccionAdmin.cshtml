@@ -1,0 +1,47 @@
+@{
+    var hoyArgentina = FechaHelper.HoyEnArgentina().ToString("yyyy-MM-dd");
+}
+
+<div class="modal fade" id="modal-rechazar" tabindex="-1" aria-labelledby="titulo-modal-rechazar" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5" id="titulo-modal-rechazar">Rechazar comprobante</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <label for="motivo-rechazo" class="form-label">Motivo</label>
+                <textarea id="motivo-rechazo" class="form-control" rows="3" maxlength="500" aria-describedby="ayuda-motivo"></textarea>
+                <div class="invalid-feedback">Escribí un motivo de entre 10 y 500 caracteres.</div>
+                <div class="d-flex justify-content-between mt-1 small text-body-secondary" id="ayuda-motivo">
+                    <span>El empleado va a ver este motivo.</span>
+                    <span><span id="contador-motivo">0</span>/500</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-danger" id="confirmar-rechazo">Rechazar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modal-pagar" tabindex="-1" aria-labelledby="titulo-modal-pagar" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5" id="titulo-modal-pagar">Marcar como pagado</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <label for="fecha-pago" class="form-label">Fecha de pago</label>
+                <input type="date" id="fecha-pago" class="form-control" max="@hoyArgentina" value="@hoyArgentina" />
+                <div class="invalid-feedback">Elegí una fecha que no sea futura ni anterior a la fecha de carga.</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-success" id="confirmar-pago">Marcar pagado</button>
+            </div>
+        </div>
+    </div>
+</div>

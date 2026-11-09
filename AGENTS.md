@@ -49,6 +49,8 @@ al agregar una, reflejarla también en las secciones afectadas.
 | Tests unitarios | No se hacen | No hay proyecto de tests |
 | Login / logout | `CuentaController` propio: `IniciarSesion` (Challenge OIDC) y `CerrarSesion` (POST con antiforgery, vuelve a `/`). Sin `Microsoft.Identity.Web.UI` ni Razor Pages | P1 apunta a `Cuenta/IniciarSesion`, no a `MicrosoftIdentity/Account/SignIn` |
 | Migraciones en Azure | La web las aplica al arrancar en **todos** los entornos (EF Core toma un lock en la BD durante `Migrate`); la Function no migra | No se corre `dotnet ef database update` contra producción; el usuario de BD de la web necesita permisos DDL |
+| Vista previa en la carga (P4 etapa 2) | La etapa 2 muestra la vista previa del archivo (URL SAS, partial `_VistaPrevia`) arriba de "Qué pasa después", aunque el prototipo no la tenga | `EstadoComprobanteDto` incluye `ContentType`; la vista previa funciona desde Procesando porque el blob se sube antes de redirigir |
+| Guardar en la carga (P4 etapa 2) | "Guardar cambios" / "Guardar y enviar a revisión" redirige a Mis comprobantes (P3) con el toast de éxito, en vez de quedarse en la pantalla como el prototipo | `ComprobantesController.Editar` termina en `RedirectToAction(Index)`; P5 (`EditarDetalle`) sigue volviendo al detalle |
 
 ## 1. Stack y comandos
 
@@ -179,7 +181,9 @@ No hay proyecto de tests (ver 0).
 - Toda consulta de empleado filtra por `UsuarioId` del usuario logueado. Recurso ajeno → **404**.
 - Un administrador **no** cambia el estado de sus propios comprobantes (RN-15) → **403**, validado en el servicio.
 - Errores de API con `ProblemDetails` (RFC 9457) y mensaje en español. Códigos: 400 inválido, 401 sin sesión,
-  403 sin permiso / admin sobre propio, 404 inexistente o ajeno, 409 transición inválida.
+  403 sin permiso / admin sobre propio, 404 inexistente o ajeno, 409 transición inválida. El 401/403 de autorización en `/api`
+  lo escriben los eventos `OnRedirectToIdentityProvider` (OIDC) y `OnRedirectToAccessDenied` (cookie) de `Web/Program.cs`
+  con `ProblemaApiHelper`, en vez de redirigir a Entra ID / Acceso denegado como en las vistas.
 - POST y DELETE de API exigen antiforgery en el header `RequestVerificationToken`; formularios con `asp-antiforgery`.
 - HTTPS obligatorio. El navegador **nunca** recibe la connection string: solo URLs SAS de 5 minutos.
 - async/await en todo I/O (EF, Blob, Document Intelligence).
@@ -215,8 +219,11 @@ No hay proyecto de tests (ver 0).
   de badge por extensiones en `GestorGastos.DTOs/Helpers/` (namespace `GestorGastos.DTOs.Helpers`, importado en los
   `_ViewImports` de Views y del área Admin), compartidas por web, servicios y validaciones:
   `EtiquetasHelper`: `EstadoComprobante.Texto()` ("Pendiente de Revisión"), `EstadoComprobante.ClaseBadge()`,
-  `Categoria.Texto()` ("Viáticos"), `TipoDocumento.Texto()`, `decimal?.Moneda(moneda)` ("$ 12.345,67" o "—");
-  `FechaHelper`: `DateTime.ConvertirAArgentina()`, `FechaLocal()` / `FechaHoraLocal()` ("28/10/2026 14:32").
+  `Categoria.Texto()` ("Viáticos"), `TipoDocumento.Texto()`, `decimal?.Moneda(Moneda?)` ("$ 12.345,67" o "—"; formatea
+  con `es-AR` fijo **sin** cambiar la cultura global, porque el model binding de `<input type="number">` espera punto decimal);
+  `FechaHelper`: `HoyEnArgentina()`, `DateTime.ConvertirAArgentina()`, `DateOnly.InicioDelDiaArgentinaEnUtc()` (para guardar
+  una fecha sin hora como `datetime2` UTC, p. ej. `FechaPago`), `FechaLocal()` (de `DateTime` UTC o `DateOnly?`) / `FechaHoraLocal()`
+  ("28/10/2026 14:32").
   No duplicarlas en `Web/Helpers` (ahí quedan solo los helpers que dependen de ASP.NET: claims, roles, `Resultado`).
 - Fechas: se guardan en **UTC** (`DateTime.UtcNow`, asignadas por el servidor) y se muestran en hora
   de Argentina (zona `America/Argentina/Buenos_Aires`, UTC−3) solo en los helpers de vista.
@@ -236,8 +243,18 @@ No hay proyecto de tests (ver 0).
   para acciones de fila, `modal`, `toast` abajo a la derecha, `breadcrumb`, `pagination-sm`, `spinner-border`).
   Botón principal `btn-primary`, secundario `btn-outline-secondary`, destructivo `btn-outline-danger` / `btn-danger`.
   Badges de estado **siempre** por `ClaseBadge()` (tabla en 7.6). Partial `_BadgeEstado.cshtml`.
-- JS por pantalla en `wwwroot/js/<pantalla>.js` (IIFE, vanilla, `fetch` con header `RequestVerificationToken`
-  leído del `@Html.AntiForgeryToken()` del layout). CSS propio solo si Bootstrap no lo resuelve,
+- Partials compartidos (`Views/Shared`): `_BadgeEstado`, `_BadgeRevisar`, `_FormularioEdicion` (P4 etapa 2 y P5, modelo
+  `FormularioEdicionViewModel`; los campos se llaman `Formulario.*` para el `[Bind(Prefix)]` del controller), `_Historial` (P5 y P7),
+  `_Paginacion` (P3 y P6, `PaginacionViewModel` con `IPaginado` + filtros de ruta), `_ModalEliminar` (P3, P4 y P5; modelo = URL a la
+  que ir después de borrar, vacío → recarga) y `_VistaPrevia` (P5 y P7). En `Areas/Admin/Views/Shared`: `_BotonesAccionAdmin`
+  (botones según el estado; `EnTabla` = estilo outline de P6) y `_ModalesAccionAdmin` (rechazar y pagar). El toast vive en el layout:
+  `TempData["MensajeExito"]` se muestra solo al cargar la página.
+- JS: `wwwroot/js/site.js` (cargado por el layout) expone `window.GestorGastos.enviar(url, { metodo, cuerpo })` (`fetch` con el header
+  `RequestVerificationToken` leído del `@Html.AntiForgeryToken()` del layout; devuelve `{ ok, status, datos, mensaje }` con el texto
+  del `ProblemDetails`) y `mostrarToast(mensaje, esError)`, y cablea solo, si existen en la página, la vista previa / descarga SAS
+  (`#vista-previa`), el modal de eliminar (`#modal-eliminar`, el botón que lo abre lleva `data-id` y `data-nombre`) y los filtros
+  que se envían al cambiar (`form[data-enviar-al-cambiar]`). Lo propio de cada pantalla va en `wwwroot/js/<pantalla>.js` (IIFE, vanilla):
+  `cargar-comprobante.js`, `resultado-carga.js`, `mis-comprobantes.js` (polling de filas), `admin-acciones.js` (P6 y P7). CSS propio solo si Bootstrap no lo resuelve,
   en `wwwroot/css/site.css`, **cada regla con un comentario que la justifica** (p. ej. alto fijo de la previsualización).
 - Responsive: probar cada pantalla a 375 px de ancho.
 - Logging: `ILogger<T>` con plantillas estructuradas (`"Comprobante {ComprobanteId} pasó de {Anterior} a {Nuevo}"`)
@@ -308,25 +325,25 @@ Leyenda: ✅ hecho · 🟡 parcial/mock · ❌ no existe. Actualizar en cada PR.
 | — | Solución, proyectos y DI base | — | — | ✅ `GestorGastos.slnx` con los 6 proyectos; DbContext, ProblemDetails y App Insights registrados en web y Function; `.vscode` (build + launch Web) |
 | — | `compose.yaml` (SQL Server + Azurite), `.env.example`, `local.settings.example.json` | — | — | ✅ |
 | — | Modelo + migración inicial | — | — | ✅ `Usuario`, `Comprobante`, `HistorialEstado` + enums en DTOs; migración `Inicial` (la web aplica las migraciones al arrancar, en todos los entornos) |
-| — | Auth Entra ID (OIDC, App Roles, fallback policy) + alta/actualización de `Usuario` | — | — | ✅ `AddMicrosoftIdentityWebApp` con `OnTokenValidated` → `UsuarioServicio.RegistrarAccesoAsync` (`UsuarioRepositorio`), `AccessDeniedPath`, fallback policy con rol; login/logout en `CuentaController` |
+| — | Auth Entra ID (OIDC, App Roles, fallback policy) + alta/actualización de `Usuario` | — | — | ✅ `AddMicrosoftIdentityWebApp` con `OnTokenValidated` → `UsuarioServicio.RegistrarAccesoAsync` (`UsuarioRepositorio`), `AccessDeniedPath`, fallback policy con rol; login/logout en `CuentaController`. En `/api` sin sesión → 401 y sin rol/permiso → 403 `ProblemDetails` (no redirige) |
 | — | Layout con navbar (Dashboard, Mis comprobantes, Cargar, Administración solo admin; usuario → rol, email, Cerrar sesión) | `_Layout.cshtml` | — | ✅ Navbar completa según rol (solo con sesión) + `@Html.AntiForgeryToken()` para los `fetch`. Marca `active` + `aria-current` por área/controller/acción: Dashboard (`Home/Index`), Cargar (`Cargar`/`Resultado`/`Editar`), Mis comprobantes (resto de `Comprobantes` fuera del área, p. ej. `Detalle`), Administración (área `Admin`) |
 | P1 | Bienvenida / Login (redirige a Dashboard si hay sesión) | `HomeController.Index` `[AllowAnonymous]` sin sesión → vista `Bienvenida` | — | ✅ Botón → `Cuenta/IniciarSesion` |
 | — | Acceso denegado (sin rol o Empleado en `/Admin`) | `CuentaController.AccesoDenegado` | — | ✅ Responde 403; Cerrar sesión solo si hay sesión |
 | P2 | Dashboard (abiertos + desglose + alerta de errores) | `HomeController.Index` con sesión (sin rol → Acceso denegado) | — | ✅ `Views/Home/Index.cshtml` con "Hola, <nombre>", botones Cargar / Ver mis comprobantes, card "Documentos abiertos" (`display-3`), card "Por estado" con los 4 estados abiertos y alerta con "Completar ahora" si hay errores. Datos: `ComprobanteServicio.ObtenerResumenAsync` → `ComprobanteRepositorio.ContarPorEstadoAsync` (un `GROUP BY Estado` filtrado por `UsuarioId`) |
-| P3 | Mis comprobantes (filtro estado, orden, paginación 10, eliminar con modal, polling de Procesando) | `ComprobantesController.Index` | `GET api/comprobantes/{id}/estado`, `DELETE api/comprobantes/{id}` | 🟡 Implementado `ComprobantesController.Index` + `Views/Comprobantes/Index.cshtml` con filtros por estado/orden, paginación en BD (`ComprobanteServicio.ListarMisComprobantesAsync` → `ComprobanteRepositorio.ListarPorUsuarioAsync`, 10 por página) y modal de eliminación usando `DELETE /api/comprobantes/{id}` (`wwwroot/js/mis-comprobantes.js`). Falta el polling de filas en `Procesando` sin recargar la página |
+| P3 | Mis comprobantes (filtro estado, orden, paginación 10, eliminar con modal, polling de Procesando) | `ComprobantesController.Index` | `GET api/comprobantes/{id}/estado`, `DELETE api/comprobantes/{id}` | ✅ `Views/Comprobantes/Index.cshtml`: filtros que se envían al cambiar, paginación en BD (`ListarMisComprobantesAsync` → `ListarPorUsuarioAsync`, 10 por página, partial `_Paginacion`) y eliminar con `_ModalEliminar`. `wwwroot/js/mis-comprobantes.js` consulta cada 3 s (máx. 2 min) las filas en Procesando y actualiza badge, monto y botón Eliminar sin recargar, con `ClaseBadge`/`MontoTexto`/`Editable` de `EstadoComprobanteDto` |
 | P4 | Cargar — etapa 1 (archivo, tipo, categoría, miniatura, Quitar) | `ComprobantesController.Cargar` GET/POST | — | ✅ `CargarComprobanteViewModel` + `Views/Comprobantes/Cargar.cshtml` + `wwwroot/js/cargar-comprobante.js` (valida extensión y 4 MB al elegir, miniatura o ícono PDF, aviso de PDF > 2 páginas, Quitar). Servidor: `ComprobanteServicio.CargarAsync` → `ValidadorArchivo` → registro en Procesando + historial → blob `{GUID}.{ext}` (si falla la subida borra el registro y muestra "No pudimos guardar el archivo…") |
-| P4 | Cargar — etapa 2 (polling 3 s / 2 min, resultado, edición, Revisar < 0,8) | `ComprobantesController.Resultado/{id}` + `Editar [POST]` | `GET api/comprobantes/{id}/estado` | ✅ `Views/Comprobantes/Resultado.cshtml` + `wwwroot/js/resultado-carga.js`: en Procesando consulta el estado cada 3 s y recarga la vista cuando cambia; a los 2 min muestra el aviso de demora. Formulario `EditarComprobanteDto` (prefijo `Formulario`) con badge Revisar (partial `_BadgeRevisar`), Eliminar con modal (`DELETE api/comprobantes/{id}`) y toast de éxito. `ComprobanteServicio.EditarAsync` sirve también para P5 (Error → Pendiente con historial, `EditadoManualmente` solo si cambió un dato extraído). `EstadoComprobanteDto` serializa los enums como texto (`"estado": "Procesando"`) |
-| P5 | Detalle (datos, preview SAS, descargar, editar, eliminar, historial) | `ComprobantesController.Detalle/{id}`, `EditarDetalle [POST]` | `GET api/comprobantes/{id}/archivo?descarga=`, `DELETE api/comprobantes/{id}` (de P4) | ✅ Alertas por estado (error, rechazo con motivo, procesando) e historial con el nombre de quien hizo cada cambio. Preview (`<img>` / `<iframe>`) y descarga pidiendo la URL SAS por `fetch` (`wwwroot/js/detalle.js`). Editar reutiliza `EditarAsync` (P4) y vuelve al detalle; Eliminar con modal sobre el `DELETE` de P4 |
-| P6 | Todos los comprobantes (filtros estado + empleado, orden, paginación, acciones por estado, modales) | `Admin/ComprobantesController.Index` | `POST api/admin/comprobantes/{id}/tomar\|aprobar\|rechazar\|pagar` | 🟡 Listado hecho: `Areas/Admin/Views/Comprobantes/Index.cshtml` con filtros Estado, Empleado (`UsuarioServicio.ListarEmpleadosAsync`) y Orden, badge "Propio" y paginación en BD (`ComprobanteServicio.ListarAdminAsync` → `ComprobanteRepositorio.ListarAdminAsync`, 10 por página). API de acciones implementada (`Api/AdminComprobantesController` + `TomarEnRevisionAsync`/`AprobarAsync`/`RechazarAsync`/`MarcarPagadoAsync`). Falta: acciones por fila (solo hay Ver detalle), modales de rechazar/pagar y toasts en el listado, y el texto "Mostrando 1–N de M" (hoy "Mostrando 1 al N de M registros") |
-| P7 | Detalle administración (empleado nombre + email, acciones de estado, sin editar/eliminar) | `Admin/ComprobantesController.Detalle/{id}` | ídem P6 + `archivo` | 🟡 Vista con datos del empleado, alerta de propio, vista previa SAS, historial, botones de estado con modales de rechazar/pagar y toasts (`wwwroot/js/admin-detalle.js`; 409 → mensaje y recarga). Falta: Descargar (ver 6) y la validación cliente de la fecha de pago (usa UTC) |
+| P4 | Cargar — etapa 2 (polling 3 s / 2 min, resultado, edición, Revisar < 0,8) | `ComprobantesController.Resultado/{id}` + `Editar [POST]` | `GET api/comprobantes/{id}/estado` | ✅ `Views/Comprobantes/Resultado.cshtml` + `wwwroot/js/resultado-carga.js`: en Procesando consulta el estado cada 3 s y recarga la vista cuando cambia; a los 2 min muestra el aviso de demora. Formulario `_FormularioEdicion` con badge Revisar (`_BadgeRevisar`), vista previa (`_VistaPrevia`, ver 0), Eliminar con `_ModalEliminar`; Guardar redirige a P3 con el toast de éxito (ver 0). `ComprobanteServicio.EditarAsync` sirve también para P5 (Error → Pendiente con historial, `EditadoManualmente` solo si cambió un dato extraído). `EstadoComprobanteDto` serializa los enums como texto (`"estado": "Procesando"`) |
+| P5 | Detalle (datos, preview SAS, descargar, editar, eliminar, historial) | `ComprobantesController.Detalle/{id}`, `EditarDetalle [POST]` | `GET api/comprobantes/{id}/archivo?descarga=`, `DELETE api/comprobantes/{id}` (de P4) | ✅ Alertas por estado (error, rechazo con motivo, procesando) e historial (`_Historial`) con el nombre de quien hizo cada cambio. Preview (`<img>` / `<iframe>`) y descarga con `_VistaPrevia` (URL SAS por `fetch`, en `site.js`). Editar reutiliza `EditarAsync` (P4) y `_FormularioEdicion`; Eliminar con `_ModalEliminar` |
+| P6 | Todos los comprobantes (filtros estado + empleado, orden, paginación, acciones por estado, modales) | `Admin/ComprobantesController.Index` | `POST api/admin/comprobantes/{id}/tomar\|aprobar\|rechazar\|pagar` | ✅ `Areas/Admin/Views/Comprobantes/Index.cshtml`: filtros Estado, Empleado y Orden (se envían al cambiar), badge "Propio", paginación en BD (`ListarAdminAsync`, `_Paginacion`, "Mostrando 1–N de M") y acciones por fila (`_BotonesAccionAdmin`, sin acciones en los propios) con los modales `_ModalesAccionAdmin` y toasts (`wwwroot/js/admin-acciones.js`; 409 → mensaje y recarga) |
+| P7 | Detalle administración (empleado nombre + email, acciones de estado, sin editar/eliminar) | `Admin/ComprobantesController.Detalle/{id}` | ídem P6 + `archivo` | ✅ Mismo layout que P5: `_VistaPrevia` (preview y descarga), datos con empleado, badges Revisar de descripción y monto, alerta de propio, `_Historial`, y botones de estado (`_BotonesAccionAdmin` + `_ModalesAccionAdmin` + `admin-acciones.js`). El modal de pagar toma `max` = hoy en Argentina (servidor) y `min` = fecha de carga |
 | — | Timeout: Procesando > 5 min → ErrorExtraccion al consultar estado | — | dentro de `GET .../estado` | ✅ `ComprobanteServicio.ObtenerEstadoAsync` (lo usan la API y `Resultado/{id}`): pasa a ErrorExtraccion con "El análisis tardó demasiado…" e historial con `UsuarioId = null` |
 | — | Validación de archivo (extensión, magic bytes, 4 MB, aviso PDF > 2 páginas) | — | — | ✅ `Servicios/ValidadorArchivo` (estático): RN-01 a RN-04 con los mensajes del enunciado; RN-06 cuenta `/Type /Page` sin descomprimir el PDF (si las páginas están en object streams comprimidos no avisa). El cliente replica extensión, tamaño y conteo de páginas |
 | — | Function de extracción (receipt/invoice, idempotente, historial) | — | — | 🟡 `ExtraerComprobanteFunction` + `ExtraccionServicio` + `ExtractorDocumentIntelligence` / `ExtractorDocumentosMock`. Probada en local con `func start` + Azurite (mock, y el extractor real contra un servidor falso con la forma REST de Document Intelligence). Falta probarla en Azure: Document Intelligence real y Event Grid (ver 6) |
 | — | Vista de error genérica (sin detalles técnicos) | `HomeController.Error` | `ProblemDetails` | ✅ Vista `Error` genérica + `UseExceptionHandler` fuera de Development + `AddProblemDetails`; `Resultado<T>` se traduce con `ComoProblema` (API) y `ComoVista` (MVC), ver 3 |
-| — | Almacenamiento de archivos (Blob Storage) | — | — | 🟡 `Servicios/AlmacenamientoArchivos` (singleton en `Web/Program.cs`): `SubirAsync` (crea el contenedor si no existe), `EliminarAsync` (`DeleteIfExistsAsync`), `GenerarUrlLecturaAsync` → `UrlArchivoDto` (SAS de lectura de 5 min sobre un blob; con `nombreDescarga` fija `Content-Disposition: attachment`). Carga y eliminación ya lo usan; falta el endpoint `GET api/comprobantes/{id}/archivo` (P5/P7), único consumidor de `GenerarUrlLecturaAsync`. También registrado en la Function, porque `ComprobanteServicio` depende de él |
+| — | Almacenamiento de archivos (Blob Storage) | — | — | ✅ `Servicios/AlmacenamientoArchivos` (singleton en web y Function): `SubirAsync` (crea el contenedor si no existe), `EliminarAsync` (`DeleteIfExistsAsync`), `GenerarUrlLecturaAsync` → `UrlArchivoDto` (SAS de lectura de 5 min sobre un blob; con `nombreDescarga` fija `Content-Disposition: attachment`). Lo usan la carga, la eliminación y `GET api/comprobantes/{id}/archivo` (P5/P7). Falta probarlo contra el Storage de Azure (despliegue) |
 | — | Application Insights + logs de 7.6 en web y Function | — | — | ✅ En código: `AddApplicationInsightsTelemetry` (web) y `AddApplicationInsightsTelemetryWorkerService` + `ConfigureFunctionsApplicationInsights` (Function), registrados solo si hay connection string. Logs de carga, inicio/fin de extracción con duración, error de extracción y cada cambio de estado en `ComprobanteServicio` y `ExtraccionServicio`. Sin probar contra un recurso real (depende del despliegue) |
 | — | Despliegue (App Service, Function App, Azure SQL, Storage, Event Grid, DI F0) | — | — | ❌ |
-| — | README (diagrama, recursos, App Registration + App Roles, variables, correr local, desplegar) | — | — | ❌ |
+| — | README (diagrama, recursos, App Registration + App Roles, variables, correr local, desplegar) | — | — | ✅ `README.md` (diagrama Mermaid). El paso a paso del despliegue está en `SETUP.md` sección 5 |
 | — | 2 usuarios de prueba en el tenant (1 Empleado, 1 Administrador) | — | — | ✅ |
 | — | Captura de App Insights con una extracción completa | — | — | ❌ Requiere el despliegue: recurso App Insights + `APPLICATIONINSIGHTS_CONNECTION_STRING` en App Service y Function App + una carga de punta a punta en Azure |
 | — | Opcional: CI/CD (GitHub Actions) web + Function | — | — | 🟡 CI ✅ (compila la solución en push y PR a `main`); falta el despliegue (CD) |
@@ -349,11 +366,6 @@ Pendientes / mocks activos (agregar una fila por cada mock o integración a medi
 
 | Qué | Dónde | TODO |
 |---|---|---|
-| Listado de administración (P6) sin acciones por fila, modales ni toasts: reusar la lógica de `admin-detalle.js` | `Web/Areas/Admin/Views/Comprobantes/Index.cshtml` | — |
-| P3: faltan actualizaciones por polling para filas en `Procesando` (sin recargar) | `Web/Views/Comprobantes/Index.cshtml`, `Web/wwwroot/js/mis-comprobantes.js` | — |
-| Detalle administrativo (P7): la vista previa ya funciona, pero el botón Descargar apunta directo a `GET /api/comprobantes/{id}/archivo?descarga=true`, que devuelve JSON (`{ url, vencimiento, contentType }`) y no baja el archivo. Hay que pedir la URL con `fetch` y navegar a ella, como hace `detalle.js`. El comentario `TODO Almacenamiento` de la vista quedó desactualizado | `Web/Areas/Admin/Views/Comprobantes/Detalle.cshtml`, `Web/wwwroot/js/admin-detalle.js` | `TODO Almacenamiento` |
-| Modal pagar (P7): la validación cliente compara contra `new Date().toISOString()` (fecha UTC), así que entre las 21:00 y las 24:00 de Argentina deja elegir el día siguiente. El servidor sí valida bien (RN-17) | `Web/wwwroot/js/admin-detalle.js` | — |
-| `/api`: sin sesión o sin rol hoy redirige (a Entra ID / Acceso denegado); debería responder 401/403 `ProblemDetails`. Resolver con los eventos `OnRedirectToIdentityProvider` (OIDC) y `OnRedirectToAccessDenied` (cookie) al crear el primer controller API | `Web/Program.cs` | — |
 | Extracción sin probar en Azure: `ExtractorDocumentIntelligence` con el servicio real y disparo por Event Grid | `Servicios/ExtractorDocumentIntelligence.cs`, `SETUP.md` sección 5 | — |
 
 ## 7. Requisitos funcionales (resumen del enunciado)
@@ -569,12 +581,14 @@ Checklist de aceptación:
 7. Actualizar las secciones 5 y 6 de este archivo.
 
 ### 8.2 Cambiar el estado de un comprobante
-Siempre por `ComprobanteServicio` (un único punto, p. ej. `CambiarEstadoAsync(id, nuevoEstado, usuarioId?, observacion?)`):
+Siempre por `ComprobanteServicio`. Las transiciones del administrador pasan por
+`CambiarEstadoAsync(id, adminId, estadoEsperado, estadoNuevo, observacion?, validarYAplicar?)`, y todas (también las de la
+Function y la edición del empleado) registran el cambio con `RegistrarCambioEstado`:
 1. `ObtenerPorIdAsync` con tracking → 404 si no existe (o si es ajeno y quien pide no es admin).
-2. Admin sobre propio → 403 (RN-15). Transición fuera de la tabla 7.2 → 409 (RN-13).
-3. Validar datos de la transición (motivo RN-16, fecha de pago RN-17, monto/descripción RN-08/09).
-4. Aplicar cambios + agregar `HistorialEstado` (RN-18) + `GuardarCambiosAsync()`.
-5. Log del cambio. La Function usa este mismo método con `usuarioId = null`.
+2. Admin sobre propio → 403 (RN-15). Estado distinto del esperado → 409 (RN-13).
+3. `validarYAplicar(comprobante)` valida los datos de la transición y devuelve el mensaje de error (→ 400) o `null` después de
+   aplicar los cambios propios (motivo RN-16, fecha de pago RN-17).
+4. `RegistrarCambioEstado` (estado + `HistorialEstado` RN-18 + log) y `GuardarCambiosAsync()`.
 
 ### 8.3 Cambiar el modelo
 Editar entidad / `GestorGastosDbContext.OnModelCreating` → `dotnet ef migrations add <NombreEnPascal>` (comando de la
